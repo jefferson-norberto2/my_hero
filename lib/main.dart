@@ -60,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final List<ChatMessage> _chatHistory = [];
   InferenceModel? _activeModel;
+  InferenceChat? _activeChat;
 
   @override
   void dispose() {
@@ -124,12 +125,12 @@ class _ChatScreenState extends State<ChatScreen> {
       // 3. Load the model from the local file
       setState(() {
         _loadingStatus = 'Loading model $fileName into memory...';
-        _downloadProgress = 1.0; // Show full bar while loading
+        _downloadProgress = 1.0;
       });
 
       await FlutterGemma.installModel(
         modelType: ModelType.gemmaIt,
-      ).fromFile(filePath).install(); // Changed from .fromAsset to .fromFile
+      ).fromFile(filePath).install();
         
       var preferredBackend = _backendsSelected[0]
         ? PreferredBackend.cpu
@@ -165,7 +166,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || _activeModel == null) return;
 
     setState(() {
+      // 1. Add the user's message
       _chatHistory.add(ChatMessage(text: text, isUser: true));
+      
+      // 2. Add an empty placeholder message for the AI's response
+      _chatHistory.add(ChatMessage(text: "", isUser: false));
+      
       _messageInputController.clear();
       _isGenerating = true;
     });
@@ -173,27 +179,33 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      final chat = await _activeModel!.createChat(
+      _activeChat ??= await _activeModel!.createChat(
         systemInstruction:
             'You are a helpful assistant. Always reply in Portuguese. Your name is My Hero.',
       );
 
-      await chat.addQueryChunk(Message.text(text: text, isUser: true));
+      await _activeChat!.addQueryChunk(Message.text(text: text, isUser: true));
 
-      final response = await chat.generateChatResponse();
+      // 3. Request the response as a Stream
+      final responseStream = _activeChat!.generateChatResponseAsync();
 
-      setState(() {
-        _chatHistory.add(ChatMessage(text: response.toString(), isUser: false));
-      });
-      _scrollToBottom();
+      // 4. Listen to the stream and append each chunk as it arrives
+      await for (final chunk in responseStream) {
+        if (!mounted) break; // Prevents errors if the user leaves the screen
+        
+        setState(() {
+          // Append the chunk to the last message in the history
+          if (chunk is TextResponse){
+          _chatHistory.last.text += chunk.token;
+          }
+        });
+        
+        _scrollToBottom();
+      }
+      
     } catch (e) {
       setState(() {
-        _chatHistory.add(
-          ChatMessage(
-            text: "System: Error generating response ($e)",
-            isUser: false,
-          ),
-        );
+        _chatHistory.last.text = "System: Error generating response ($e)";
       });
       _scrollToBottom();
     } finally {

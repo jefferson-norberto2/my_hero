@@ -44,11 +44,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageInputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<Widget> backendsWidgets = <Widget>[
+  final List<Widget> _backendsWidgets = <Widget>[
     const Text('CPU'),
     const Text('GPU'),
   ];
-  final List<bool> backendsSelected = <bool>[true, false];
+  final List<bool> _backendsSelected = <bool>[true, false];
 
   bool _isModelLoaded = false;
   bool _isLoading = false;
@@ -95,10 +95,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final fileName = is2B ? 'gemma_2b.litertlm' : 'gemma_4b.litertlm';
 
-    var preferredBackend = backendsSelected[0]
-        ? PreferredBackend.cpu
-        : PreferredBackend.gpu;
-
     try {
       // 1. Get the app's internal documents directory
       final directory = await getApplicationDocumentsDirectory();
@@ -127,13 +123,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
       // 3. Load the model from the local file
       setState(() {
-        _loadingStatus = 'Loading model into memory...';
+        _loadingStatus = 'Loading model $fileName into memory...';
         _downloadProgress = 1.0; // Show full bar while loading
       });
 
       await FlutterGemma.installModel(
         modelType: ModelType.gemmaIt,
       ).fromFile(filePath).install(); // Changed from .fromAsset to .fromFile
+        
+      var preferredBackend = _backendsSelected[0]
+        ? PreferredBackend.cpu
+        : PreferredBackend.gpu;
 
       _activeModel = await FlutterGemma.getActiveModel(
         maxTokens: 2048,
@@ -145,7 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = false;
         _chatHistory.add(
           ChatMessage(
-            text: "System: Model loaded successfully from device storage!",
+            text: "System: Model $fileName loaded successfully from device storage!",
             isUser: false,
           ),
         );
@@ -219,10 +219,10 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(height: 8),
               ToggleButtons(
-                onPressed: (int index) {
+                onPressed: _isLoading ? null : (int index) {
                   setState(() {
-                    for (int i = 0; i < backendsSelected.length; i++) {
-                      backendsSelected[i] = i == index;
+                    for (int i = 0; i < _backendsSelected.length; i++) {
+                      _backendsSelected[i] = i == index;
                     }
                   });
                 },
@@ -235,8 +235,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   minHeight: 28.0,
                   minWidth: 80.0,
                 ),
-                isSelected: backendsSelected,
-                children: backendsWidgets,
+                isSelected: _backendsSelected,
+                children: _backendsWidgets,
               ),
               const SizedBox(height: 16),
               Row(

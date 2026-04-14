@@ -175,7 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final chat = await _activeModel!.createChat(
         systemInstruction:
-            'You are a helpful assistant. Always reply in Portuguese.',
+            'You are a helpful assistant. Always reply in Portuguese. Your name is My Hero.',
       );
 
       await chat.addQueryChunk(Message.text(text: text, isUser: true));

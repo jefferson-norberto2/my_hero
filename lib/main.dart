@@ -141,6 +141,11 @@ class _ChatScreenState extends State<ChatScreen> {
         preferredBackend: preferredBackend,
       );
 
+      _activeChat = await _activeModel!.createChat(
+        systemInstruction:
+            'You are a helpful assistant and always reply in Portuguese.',
+      );
+
       setState(() {
         _isModelLoaded = true;
         _isLoading = false;
@@ -179,11 +184,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      _activeChat ??= await _activeModel!.createChat(
-        systemInstruction:
-            'You are a helpful assistant. Always reply in Portuguese. Your name is My Hero.',
-      );
-
       await _activeChat!.addQueryChunk(Message.text(text: text, isUser: true));
 
       // 3. Request the response as a Stream
@@ -213,12 +213,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _stopGeneration() {
+    if (_isGenerating && _activeChat != null) {
+      _activeChat!.stopGeneration();
+      setState(() => _isGenerating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gemma 4 Local'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          if (_isModelLoaded)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                setState(() {
+                  _isModelLoaded = false;
+                  _activeModel?.close();
+                  _activeModel = null;
+                  _activeChat = null;
+                  _chatHistory.clear();
+                });
+              },
+            ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -333,11 +355,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.send),
-                  color: Colors.teal,
+                  icon: Icon( !_isGenerating ? Icons.send : Icons.stop_circle_rounded),
+                  color: !_isGenerating ? Colors.teal : Colors.red,
                   onPressed: (_isModelLoaded && !_isGenerating)
                       ? _sendMessage
-                      : null,
+                      : _stopGeneration,
                 ),
               ],
             ),

@@ -174,15 +174,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageInputController.text.trim();
+  Future<void> _sendMessage([Uint8List? imageBytes]) async {
+    var text = _messageInputController.text.trim();
     if (text.isEmpty || _activeModel == null) return;
 
     setState(() {
-      // 1. Add the user's message
-      _chatHistory.add(ChatMessage(text: text, isUser: true));
+      _chatHistory.add(
+        ChatMessage(text: text, isUser: true, imageBytes: imageBytes),
+      );
 
-      // 2. Add an empty placeholder message for the AI's response
       _chatHistory.add(ChatMessage(text: "", isUser: false));
 
       _messageInputController.clear();
@@ -192,16 +192,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      await _activeChat!.addQueryChunk(Message.text(text: text, isUser: true));
-
-      // 3. Request the response as a Stream
+      if (imageBytes != null) {
+        await _activeChat!.addQueryChunk(
+          Message(text: text, imageBytes: imageBytes, isUser: true),
+        );
+      } else {
+        await _activeChat!.addQueryChunk(
+          Message.text(text: text, isUser: true),
+        );
+      }
       final responseStream = _activeChat!.generateChatResponseAsync();
 
-      // 4. Listen to the stream and append each chunk as it arrives
       await for (final chunk in responseStream) {
         if (!mounted || _stopGenerationFlag) break;
         setState(() {
-          // Append the chunk to the last message in the history
           if (chunk is TextResponse) {
             _chatHistory.last.text += chunk.token;
           }
@@ -210,9 +214,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _scrollToBottom();
       }
     } catch (e) {
-      setState(() {
-        _chatHistory.last.text = "System: Error generating response ($e)";
-      });
+      if (!_stopGenerationFlag) {
+        setState(() {
+          _chatHistory.last.text = "System: Error generating response ($e)";
+        });
+      }
       _scrollToBottom();
     } finally {
       setState(() => _isGenerating = false);
@@ -221,62 +227,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendImage() async {
     try {
-      final text = _messageInputController.text.trim();
-      _messageInputController.clear();
-
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 80, 
+        imageQuality: 80,
       );
 
       if (pickedFile == null) return;
 
-      // 1. Leia o arquivo da imagem como bytes (Uint8List)
       final Uint8List imageBytes = await File(pickedFile.path).readAsBytes();
 
-      setState(() {
-        // 2. Display the image in the chat UI
-        _chatHistory.add(
-          ChatMessage(
-            text: text.isEmpty ? "O que tem nesta imagem?" : text,
-            isUser: true,
-            imageBytes: imageBytes,
-          ),
-        );
-        // Add an empty placeholder message for the AI's response
-        _chatHistory.add(ChatMessage(text: "", isUser: false));
-        _isGenerating = true;
-      });
-
-      _scrollToBottom();
-
-      await _activeChat!.addQueryChunk(
-        Message(
-          text: text.isEmpty ? "O que tem nesta imagem?" : text,
-          imageBytes: imageBytes, // Array de bytes da imagem
-          isUser: true,
-        ),
-      );
-
-      final responseStream = _activeChat!.generateChatResponseAsync();
-
-      await for (final chunk in responseStream) {
-        if (!mounted || _stopGenerationFlag) break;
-        setState(() {
-          if (chunk is TextResponse) {
-            _chatHistory.last.text += chunk.token;
-          }
-        });
-      }
-
-      _scrollToBottom();
-    } on Exception catch (e) {
+      _sendMessage(imageBytes);
+    } catch (e) {
       setState(() {
         _chatHistory.last.text = "System: Error generating response ($e)";
       });
-      _scrollToBottom();
-    } finally {
-      setState(() => _isGenerating = false);
     }
   }
 

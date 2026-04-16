@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 void main() {
@@ -29,8 +31,9 @@ class GemmaChatApp extends StatelessWidget {
 class ChatMessage {
   String text;
   final bool isUser;
+  final Uint8List? imageBytes; // Holds the image data as bytes
 
-  ChatMessage({required this.text, required this.isUser});
+  ChatMessage({required this.text, required this.isUser, this.imageBytes});
 }
 
 class ChatScreen extends StatefulWidget {
@@ -53,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isModelLoaded = false;
   bool _isLoading = false;
   bool _isGenerating = false;
+  bool _stopGenerationFlag = false;
 
   // Download state variables
   double _downloadProgress = 0.0;
@@ -61,6 +65,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _chatHistory = [];
   InferenceModel? _activeModel;
   InferenceChat? _activeChat;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void dispose() {
@@ -131,17 +136,19 @@ class _ChatScreenState extends State<ChatScreen> {
       await FlutterGemma.installModel(
         modelType: ModelType.gemmaIt,
       ).fromFile(filePath).install();
-        
+
       var preferredBackend = _backendsSelected[0]
-        ? PreferredBackend.cpu
-        : PreferredBackend.gpu;
+          ? PreferredBackend.cpu
+          : PreferredBackend.gpu;
 
       _activeModel = await FlutterGemma.getActiveModel(
         maxTokens: 2048,
         preferredBackend: preferredBackend,
+        supportImage: true,
       );
 
       _activeChat = await _activeModel!.createChat(
+        supportImage: true,
         systemInstruction:
             'You are a helpful assistant and always reply in Portuguese.',
       );
@@ -151,7 +158,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = false;
         _chatHistory.add(
           ChatMessage(
-            text: "System: Model $fileName loaded successfully from device storage!",
+            text:
+                "System: Model $fileName loaded successfully from device storage!",
             isUser: false,
           ),
         );
@@ -173,10 +181,10 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       // 1. Add the user's message
       _chatHistory.add(ChatMessage(text: text, isUser: true));
-      
+
       // 2. Add an empty placeholder message for the AI's response
       _chatHistory.add(ChatMessage(text: "", isUser: false));
-      
+
       _messageInputController.clear();
       _isGenerating = true;
     });
@@ -191,19 +199,78 @@ class _ChatScreenState extends State<ChatScreen> {
 
       // 4. Listen to the stream and append each chunk as it arrives
       await for (final chunk in responseStream) {
-        if (!mounted) break; // Prevents errors if the user leaves the screen
-        
+        if (!mounted || _stopGenerationFlag) break;
         setState(() {
           // Append the chunk to the last message in the history
-          if (chunk is TextResponse){
-          _chatHistory.last.text += chunk.token;
+          if (chunk is TextResponse) {
+            _chatHistory.last.text += chunk.token;
           }
         });
-        
+
         _scrollToBottom();
       }
-      
     } catch (e) {
+      setState(() {
+        _chatHistory.last.text = "System: Error generating response ($e)";
+      });
+      _scrollToBottom();
+    } finally {
+      setState(() => _isGenerating = false);
+    }
+  }
+
+  Future<void> _sendImage() async {
+    try {
+      final text = _messageInputController.text.trim();
+      _messageInputController.clear();
+
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80, 
+      );
+
+      if (pickedFile == null) return;
+
+      // 1. Leia o arquivo da imagem como bytes (Uint8List)
+      final Uint8List imageBytes = await File(pickedFile.path).readAsBytes();
+
+      setState(() {
+        // 2. Display the image in the chat UI
+        _chatHistory.add(
+          ChatMessage(
+            text: text.isEmpty ? "O que tem nesta imagem?" : text,
+            isUser: true,
+            imageBytes: imageBytes,
+          ),
+        );
+        // Add an empty placeholder message for the AI's response
+        _chatHistory.add(ChatMessage(text: "", isUser: false));
+        _isGenerating = true;
+      });
+
+      _scrollToBottom();
+
+      await _activeChat!.addQueryChunk(
+        Message(
+          text: text.isEmpty ? "O que tem nesta imagem?" : text,
+          imageBytes: imageBytes, // Array de bytes da imagem
+          isUser: true,
+        ),
+      );
+
+      final responseStream = _activeChat!.generateChatResponseAsync();
+
+      await for (final chunk in responseStream) {
+        if (!mounted || _stopGenerationFlag) break;
+        setState(() {
+          if (chunk is TextResponse) {
+            _chatHistory.last.text += chunk.token;
+          }
+        });
+      }
+
+      _scrollToBottom();
+    } on Exception catch (e) {
       setState(() {
         _chatHistory.last.text = "System: Error generating response ($e)";
       });
@@ -215,8 +282,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _stopGeneration() {
     if (_isGenerating && _activeChat != null) {
-      _activeChat!.stopGeneration();
-      setState(() => _isGenerating = false);
+      _stopGenerationFlag = true;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _activeChat!.stopGeneration();
+        setState(() => _isGenerating = false);
+      }).then((value) {
+        _stopGenerationFlag = false;
+      });
     }
   }
 
@@ -230,15 +302,17 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_isModelLoaded)
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: () {
-                setState(() {
-                  _isModelLoaded = false;
-                  _activeModel?.close();
-                  _activeModel = null;
-                  _activeChat = null;
-                  _chatHistory.clear();
-                });
-              },
+              onPressed: _isGenerating
+                  ? null
+                  : () {
+                      setState(() {
+                        _isModelLoaded = false;
+                        _activeModel?.close();
+                        _activeModel = null;
+                        _activeChat = null;
+                        _chatHistory.clear();
+                      });
+                    },
             ),
         ],
       ),
@@ -253,13 +327,15 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(height: 8),
               ToggleButtons(
-                onPressed: _isLoading ? null : (int index) {
-                  setState(() {
-                    for (int i = 0; i < _backendsSelected.length; i++) {
-                      _backendsSelected[i] = i == index;
-                    }
-                  });
-                },
+                onPressed: _isLoading
+                    ? null
+                    : (int index) {
+                        setState(() {
+                          for (int i = 0; i < _backendsSelected.length; i++) {
+                            _backendsSelected[i] = i == index;
+                          }
+                        });
+                      },
                 borderRadius: const BorderRadius.all(Radius.circular(20)),
                 selectedBorderColor: Colors.green[700],
                 selectedColor: Colors.white,
@@ -327,7 +403,24 @@ class _ChatScreenState extends State<ChatScreen> {
                             : Colors.grey.shade200,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(message.text),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (message.imageBytes != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8.0),
+                                child: Image.memory(
+                                  message.imageBytes!,
+                                  width: 200, // Limit image size in chat
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          Text(message.text),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -353,11 +446,24 @@ class _ChatScreenState extends State<ChatScreen> {
                     onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
+                IconButton(
+                  onPressed: _activeModel == null
+                      ? null
+                      : (_isModelLoaded && !_isGenerating)
+                      ? _sendImage
+                      : null,
+                  color: Colors.teal,
+                  icon: Icon(Icons.add_photo_alternate_rounded),
+                ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: Icon( !_isGenerating ? Icons.send : Icons.stop_circle_rounded),
+                  icon: Icon(
+                    !_isGenerating ? Icons.send : Icons.stop_circle_rounded,
+                  ),
                   color: !_isGenerating ? Colors.teal : Colors.red,
-                  onPressed: (_isModelLoaded && !_isGenerating)
+                  onPressed: _activeModel == null
+                      ? null
+                      : (_isModelLoaded && !_isGenerating)
                       ? _sendMessage
                       : _stopGeneration,
                 ),

@@ -38,7 +38,9 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
         children: [
           Icon(Icons.tune, color: Colors.teal),
           SizedBox(width: 8),
-          Text('Configurações da Conversa'),
+          Expanded(
+            child: Text('Configurações da Conversa'),
+          ),
         ],
       ),
       content: SingleChildScrollView(

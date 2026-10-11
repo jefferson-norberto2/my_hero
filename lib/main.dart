@@ -144,11 +144,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeModel = await FlutterGemma.getActiveModel(
         maxTokens: 2048,
         preferredBackend: preferredBackend,
-        supportImage: true,
+        supportImage: false,
       );
 
       _activeChat = await _activeModel!.createChat(
-        supportImage: true,
+        supportImage: false,
         systemInstruction:
             'You are a helpful assistant and always reply in Portuguese.',
       );

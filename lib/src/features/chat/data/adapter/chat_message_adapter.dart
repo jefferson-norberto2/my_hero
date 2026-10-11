@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
@@ -21,6 +22,24 @@ class ChatMessage {
       text: text ?? this.text,
       isUser: isUser ?? this.isUser,
       imageBytes: imageBytes ?? this.imageBytes,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'text': text,
+      'isUser': isUser,
+      'imageBytes': imageBytes != null ? base64Encode(imageBytes!) : null,
+    };
+  }
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      text: json['text'] as String? ?? '',
+      isUser: json['isUser'] as bool? ?? false,
+      imageBytes: json['imageBytes'] != null
+          ? base64Decode(json['imageBytes'] as String)
+          : null,
     );
   }
 }

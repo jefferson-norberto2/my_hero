@@ -44,25 +44,29 @@ lib/
         └── chat/                                              # Feature de Chat com Gemma
             ├── data/                                          # Camada de Dados
             │   ├── adapter/
-            │   │   └── chat_message_adapter.dart              # Modelos de domínio (ChatMessage) e conversores para o Gemma
+            │   │   ├── chat_message_adapter.dart              # Modelos de domínio (ChatMessage) e conversores para o Gemma
+            │   │   └── conversation_model.dart                # Modelo de conversa (histórico de mensagens e modelo selecionado)
             │   ├── datasource/
+            │   │   ├── chat_history_datasource.dart           # Persistência do histórico de conversas em disco local
             │   │   ├── gemma_local_datasource.dart            # Comunicação de baixo nível com o plugin flutter_gemma
             │   │   └── model_download_datasource.dart         # Download de arquivos com Dio e verificação no disco local
             │   └── repository/
             │       ├── chat_repository.dart                   # Interface/Contrato do repositório
-            │       └── chat_repository_impl.dart              # Implementação orquestrando os datasources
+            │       └── chat_repository_impl.dart              # Implementação orquestrando os datasources e contexto
             │
             ├── controller/                                    # Camada de Estado e Regras de Apresentação
-            │   └── chat_controller.dart                       # Gerenciamento de estado reativo com Signals
+            │   └── chat_controller.dart                       # Gerenciamento de estado reativo com Signals e conversas
             │
             └── ui/                                            # Camada de Interface do Usuário
                 ├── pages/
-                │   └── chat_page.dart                         # Tela principal da conversa
+                │   └── chat_page.dart                         # Tela principal com menu lateral e topo dinâmico
                 └── widgets/
                     ├── chat_bubble.dart                       # Renderização do balão de mensagem (texto e anexo)
+                    ├── chat_drawer.dart                       # Menu lateral hamburger com histórico e + Nova Conversa
                     ├── chat_input_bar.dart                    # Barra inferior (input de texto, anexar foto, enviar/parar)
                     ├── chat_message_list.dart                 # Lista de mensagens com rolagem automática
-                    └── model_selector_widget.dart             # Seleção CPU/GPU, botões 2B/4B e barra de progresso
+                    ├── model_selector_widget.dart             # Seleção CPU/GPU, botões 2B/4B e barra de progresso
+                    └── model_switch_dialog.dart               # Modal para troca dinâmica de modelo com preservação de contexto
 ```
 
 ---
@@ -84,6 +88,11 @@ Os estados das features utilizam o conceito de **Signals** para obter reatividad
 - **Adapter:** Converte entidades externas/DTOs (como `Message` do plugin Gemma) para modelos de domínio desacoplados do app (`ChatMessage`).
 - **Datasource:** Acessa uma única fonte de dados de forma crua (rede, banco local, plugin nativo).
 - **Repository:** Implementa o contrato de domínio, tratando erros e combinando múltiplos datasources se necessário.
+
+### 4. Histórico de Conversas e Troca de Modelo com Contexto
+- **Menu Lateral Hamburger (`ChatDrawer`):** Permite alternar entre conversas salvas, criar novas conversas (`+ Nova Conversa`) ou excluir sessões anteriores.
+- **Persistência Local (`ChatHistoryDatasource`):** Armazena todas as conversas e mensagens no armazenamento do dispositivo em formato JSON offline.
+- **Preservação de Contexto ao Trocar de Modelo (`ModelSwitchDialog`):** Ao alternar entre Gemma 2B e 4B (ou entre CPU e GPU) dentro de uma conversa, a engine carrega o novo modelo e sincroniza o histórico recente de mensagens via `addQueryChunk`, permitindo que o novo modelo continue respondendo com base no que já foi conversado.
 
 ---
 
@@ -123,7 +132,12 @@ Para criar uma nova funcionalidade (por exemplo, `login` ou `history`), siga o p
    flutter analyze
    ```
 
-3. **Executar a aplicação:**
+3. **Executar testes unitários:**
+   ```bash
+   flutter test
+   ```
+
+4. **Executar a aplicação:**
    ```bash
    flutter run
    ```

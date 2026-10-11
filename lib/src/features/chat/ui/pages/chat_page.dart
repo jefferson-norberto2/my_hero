@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../controller/chat_controller.dart';
+import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/model_selector_widget.dart';
+import '../widgets/model_switch_dialog.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -20,6 +22,7 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     _controller = GetIt.I<ChatController>();
+    _controller.init();
 
     // Efeito para exibir mensagens de erro quando surgirem
     effect(() {
@@ -43,10 +46,52 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: ChatDrawer(controller: _controller),
       appBar: AppBar(
-        title: const Text('Gemma 4 Local'),
+        title: SignalBuilder(
+          builder: (context) {
+            final conv = _controller.currentConversation;
+            final isLoaded = _controller.isModelLoaded.value;
+            final is2B = _controller.is2BModel.value;
+            final isCpu = _controller.isCpu;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  conv?.title ?? 'My Hero',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  isLoaded
+                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} (${isCpu ? "CPU" : "GPU"})'
+                      : 'Nenhum modelo carregado',
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            );
+          },
+        ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          SignalBuilder(
+            builder: (context) {
+              final isLoaded = _controller.isModelLoaded.value;
+              final isGenerating = _controller.isGenerating.value;
+
+              if (!isLoaded) return const SizedBox.shrink();
+
+              return IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Alterar modelo (mantém contexto)',
+                onPressed: isGenerating
+                    ? null
+                    : () => ModelSwitchDialog.show(context, _controller),
+              );
+            },
+          ),
           SignalBuilder(
             builder: (context) {
               final isLoaded = _controller.isModelLoaded.value;

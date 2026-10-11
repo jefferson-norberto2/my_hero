@@ -46,12 +46,12 @@ class ModelSelectorWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               ElevatedButton(
-                onPressed: isLoading ? null : () => controller.downloadAndLoadModel(true),
+                onPressed: isLoading ? null : () => controller.downloadAndLoadModel(is2B: true),
                 child: const Text('Carregar 2B'),
               ),
               const SizedBox(width: 16),
               ElevatedButton(
-                onPressed: isLoading ? null : () => controller.downloadAndLoadModel(false),
+                onPressed: isLoading ? null : () => controller.downloadAndLoadModel(is2B: false),
                 child: const Text('Carregar 4B'),
               ),
             ],

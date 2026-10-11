@@ -246,4 +246,31 @@ void main() {
       verify(() => mockHistoryDatasource.saveConversations(mockList)).called(1);
     });
   });
+
+  group('ChatRepositoryImpl - startNewChatSession', () {
+    test('should create fresh chat without adding queries when contextMessages is null', () async {
+      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+
+      await repository.startNewChatSession(contextMessages: null);
+
+      verify(() => mockGemmaDatasource.createChat()).called(1);
+      verifyNever(() => mockGemmaDatasource.addQueryChunk(any()));
+    });
+
+    test('should create fresh chat and replay only non-system messages when contextMessages provided', () async {
+      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
+
+      final messages = [
+        ChatMessage(text: 'Sistema: Aviso', isUser: false),
+        ChatMessage(text: 'Meu nome é Alice', isUser: true),
+        ChatMessage(text: 'Prazer, Alice!', isUser: false),
+      ];
+
+      await repository.startNewChatSession(contextMessages: messages);
+
+      verify(() => mockGemmaDatasource.createChat()).called(1);
+      verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
+    });
+  });
 }

@@ -10,6 +10,10 @@ abstract class ChatRepository {
     List<ChatMessage>? contextMessages,
   });
 
+  Future<void> startNewChatSession({
+    List<ChatMessage>? contextMessages,
+  });
+
   Stream<String> sendMessage({
     required String text,
     Uint8List? imageBytes,

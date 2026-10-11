@@ -89,10 +89,11 @@ Os estados das features utilizam o conceito de **Signals** para obter reatividad
 - **Datasource:** Acessa uma única fonte de dados de forma crua (rede, banco local, plugin nativo).
 - **Repository:** Implementa o contrato de domínio, tratando erros e combinando múltiplos datasources se necessário.
 
-### 4. Histórico de Conversas e Troca de Modelo com Contexto
+### 4. Histórico de Conversas e Isolamento Total de Contexto
+- **Isolamento de Contexto entre Conversas:** Cada conversa possui sua própria sessão de inferência no Gemma. Ao criar uma nova conversa (`+ Nova Conversa`) ou alternar para outra conversa salva, a sessão anterior é descartada e uma nova sessão é iniciada via `startNewChatSession`, sincronizando exclusivamente as mensagens daquela conversa. Isso impede que dados de uma conversa (como o nome do usuário ou assuntos anteriores) vazem para outras conversas.
 - **Menu Lateral Hamburger (`ChatDrawer`):** Permite alternar entre conversas salvas, criar novas conversas (`+ Nova Conversa`) ou excluir sessões anteriores.
 - **Persistência Local (`ChatHistoryDatasource`):** Armazena todas as conversas e mensagens no armazenamento do dispositivo em formato JSON offline.
-- **Preservação de Contexto ao Trocar de Modelo (`ModelSwitchDialog`):** Ao alternar entre Gemma 2B e 4B (ou entre CPU e GPU) dentro de uma conversa, a engine carrega o novo modelo e sincroniza o histórico recente de mensagens via `addQueryChunk`, permitindo que o novo modelo continue respondendo com base no que já foi conversado.
+- **Preservação de Contexto ao Trocar de Modelo (`ModelSwitchDialog`):** Ao alternar entre Gemma 2B e 4B (ou entre CPU e GPU) dentro de uma mesma conversa, a engine carrega o novo modelo e sincroniza o histórico recente de mensagens daquela conversa específica via `addQueryChunk`.
 
 ---
 

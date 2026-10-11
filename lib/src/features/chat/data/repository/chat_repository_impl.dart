@@ -38,21 +38,36 @@ class ChatRepositoryImpl implements ChatRepository {
     await _gemmaDatasource.createActiveModel(useCpu: useCpu);
     await _gemmaDatasource.createChat();
 
-    // Sincroniza o contexto recente já conversado com o novo modelo carregado
-    if (contextMessages != null && contextMessages.isNotEmpty) {
-      final relevantMessages = contextMessages
-          .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
-          .toList();
+    // Sincroniza o contexto recente exclusivo desta conversa com o novo modelo carregado
+    await _replayContextMessages(contextMessages);
+  }
 
-      final recentContext = relevantMessages.length > 6
-          ? relevantMessages.sublist(relevantMessages.length - 6)
-          : relevantMessages;
+  @override
+  Future<void> startNewChatSession({
+    List<ChatMessage>? contextMessages,
+  }) async {
+    // Descarta qualquer sessão anterior e inicia uma nova sessão limpa
+    await _gemmaDatasource.createChat();
 
-      for (final msg in recentContext) {
-        await _gemmaDatasource.addQueryChunk(
-          ChatMessageAdapter.toGemmaMessage(msg),
-        );
-      }
+    // Sincroniza apenas as mensagens exclusivas da conversa atual
+    await _replayContextMessages(contextMessages);
+  }
+
+  Future<void> _replayContextMessages(List<ChatMessage>? contextMessages) async {
+    if (contextMessages == null || contextMessages.isEmpty) return;
+
+    final relevantMessages = contextMessages
+        .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
+        .toList();
+
+    final recentContext = relevantMessages.length > 6
+        ? relevantMessages.sublist(relevantMessages.length - 6)
+        : relevantMessages;
+
+    for (final msg in recentContext) {
+      await _gemmaDatasource.addQueryChunk(
+        ChatMessageAdapter.toGemmaMessage(msg),
+      );
     }
   }
 

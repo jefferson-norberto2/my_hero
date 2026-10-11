@@ -53,16 +53,17 @@ class ChatController {
       final saved = await _repository.getConversations();
       if (saved.isNotEmpty) {
         conversations.value = saved;
-        selectConversation(saved.first.id);
+        await selectConversation(saved.first.id);
       } else {
-        createNewConversation();
+        await createNewConversation();
       }
     } catch (_) {
-      createNewConversation();
+      await createNewConversation();
     }
   }
 
-  void createNewConversation() {
+  /// Cria uma nova conversa com contexto 100% limpo e isolado
+  Future<void> createNewConversation() async {
     final now = DateTime.now();
     final newConv = Conversation(
       id: now.millisecondsSinceEpoch.toString(),
@@ -77,10 +78,20 @@ class ChatController {
     conversations.value = [newConv, ...conversations.value];
     currentConversationId.value = newConv.id;
     chatHistory.value = [];
-    _saveCurrentState();
+
+    // Se o modelo já estiver carregado, inicia uma nova sessão de chat no Gemma
+    // sem nenhum histórico, garantindo que o modelo não misture o contexto anterior!
+    if (isModelLoaded.value) {
+      try {
+        await _repository.startNewChatSession(contextMessages: null);
+      } catch (_) {}
+    }
+
+    await _saveCurrentState();
   }
 
-  void selectConversation(String id) {
+  /// Seleciona uma conversa e carrega exclusivamente o contexto dela
+  Future<void> selectConversation(String id) async {
     if (isGenerating.value) return;
 
     final conv = conversations.value.where((c) => c.id == id).firstOrNull;
@@ -90,6 +101,14 @@ class ChatController {
     chatHistory.value = List.from(conv.messages);
     is2BModel.value = conv.is2B;
     backendsSelected.value = [conv.useCpu, !conv.useCpu];
+
+    // Se o modelo estiver carregado, reinicia a sessão de chat e sincroniza
+    // APENAS as mensagens da conversa selecionada
+    if (isModelLoaded.value) {
+      try {
+        await _repository.startNewChatSession(contextMessages: conv.messages);
+      } catch (_) {}
+    }
   }
 
   Future<void> deleteConversation(String id) async {
@@ -100,9 +119,9 @@ class ChatController {
 
     if (currentConversationId.value == id) {
       if (updated.isNotEmpty) {
-        selectConversation(updated.first.id);
+        await selectConversation(updated.first.id);
       } else {
-        createNewConversation();
+        await createNewConversation();
       }
     }
 
@@ -136,6 +155,8 @@ class ChatController {
     final fileName = is2B ? 'gemma_2b.litertlm' : 'gemma_4b.litertlm';
 
     try {
+      final messagesToSync = contextMessages ?? chatHistory.value;
+
       await _repository.loadModel(
         is2B: is2B,
         useCpu: isCpu,
@@ -143,7 +164,7 @@ class ChatController {
           downloadProgress.value = progress;
           loadingStatus.value = status;
         },
-        contextMessages: contextMessages,
+        contextMessages: messagesToSync,
       );
 
       is2BModel.value = is2B;
@@ -157,7 +178,7 @@ class ChatController {
         _saveCurrentState();
       }
 
-      final contextNote = (contextMessages != null && contextMessages.isNotEmpty)
+      final contextNote = (messagesToSync.isNotEmpty)
           ? ' Contexto da conversa sincronizado!'
           : '';
 
@@ -175,7 +196,7 @@ class ChatController {
     }
   }
 
-  /// Altera o modelo da conversa atual preservando o contexto das mensagens já trocadas
+  /// Altera o modelo da conversa atual preservando apenas o contexto das mensagens desta conversa
   Future<void> switchModelWithContext({
     required bool is2B,
     required bool useCpu,

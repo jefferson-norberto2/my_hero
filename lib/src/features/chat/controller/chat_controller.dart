@@ -3,6 +3,7 @@ import 'package:signals_flutter/signals_flutter.dart';
 import '../../../shared/services/media_picker_service.dart';
 import '../data/adapter/chat_message_adapter.dart';
 import '../data/adapter/conversation_model.dart';
+import '../data/adapter/response_style.dart';
 import '../data/repository/chat_repository.dart';
 
 class ChatController {
@@ -23,6 +24,7 @@ class ChatController {
   final loadingStatus = signal('');
   final backendsSelected = signal<List<bool>>([true, false]); // [CPU, GPU]
   final is2BModel = signal<bool>(true);
+  final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
 
@@ -71,6 +73,7 @@ class ChatController {
       messages: [],
       is2B: is2BModel.value,
       useCpu: isCpu,
+      responseStyle: responseStyle.value,
       createdAt: now,
       updatedAt: now,
     );
@@ -83,14 +86,17 @@ class ChatController {
     // sem nenhum histórico, garantindo que o modelo não misture o contexto anterior!
     if (isModelLoaded.value) {
       try {
-        await _repository.startNewChatSession(contextMessages: null);
+        await _repository.startNewChatSession(
+          contextMessages: null,
+          responseStyle: responseStyle.value,
+        );
       } catch (_) {}
     }
 
     await _saveCurrentState();
   }
 
-  /// Seleciona uma conversa e carrega exclusivamente o contexto dela
+  /// Seleciona uma conversa e carrega exclusivamente o contexto e estilo dela
   Future<void> selectConversation(String id) async {
     if (isGenerating.value) return;
 
@@ -101,12 +107,16 @@ class ChatController {
     chatHistory.value = List.from(conv.messages);
     is2BModel.value = conv.is2B;
     backendsSelected.value = [conv.useCpu, !conv.useCpu];
+    responseStyle.value = conv.responseStyle;
 
     // Se o modelo estiver carregado, reinicia a sessão de chat e sincroniza
-    // APENAS as mensagens da conversa selecionada
+    // APENAS as mensagens da conversa selecionada com o estilo configurado
     if (isModelLoaded.value) {
       try {
-        await _repository.startNewChatSession(contextMessages: conv.messages);
+        await _repository.startNewChatSession(
+          contextMessages: conv.messages,
+          responseStyle: conv.responseStyle,
+        );
       } catch (_) {}
     }
   }
@@ -146,6 +156,7 @@ class ChatController {
   Future<void> downloadAndLoadModel({
     bool is2B = true,
     List<ChatMessage>? contextMessages,
+    ResponseStyle? responseStyle,
   }) async {
     isLoading.value = true;
     downloadProgress.value = 0.0;
@@ -153,6 +164,7 @@ class ChatController {
     errorMessage.value = null;
 
     final fileName = is2B ? 'gemma_2b.litertlm' : 'gemma_4b.litertlm';
+    final targetStyle = responseStyle ?? this.responseStyle.value;
 
     try {
       final messagesToSync = contextMessages ?? chatHistory.value;
@@ -165,9 +177,11 @@ class ChatController {
           loadingStatus.value = status;
         },
         contextMessages: messagesToSync,
+        responseStyle: targetStyle,
       );
 
       is2BModel.value = is2B;
+      this.responseStyle.value = targetStyle;
       isModelLoaded.value = true;
       isLoading.value = false;
 
@@ -175,12 +189,13 @@ class ChatController {
       if (conv != null) {
         conv.is2B = is2B;
         conv.useCpu = isCpu;
+        conv.responseStyle = targetStyle;
         _saveCurrentState();
       }
 
       final contextNote = (messagesToSync.isNotEmpty)
-          ? ' Contexto da conversa sincronizado!'
-          : '';
+          ? ' Contexto sincronizado (${targetStyle.label})!'
+          : ' (${targetStyle.label})';
 
       chatHistory.value = [
         ...chatHistory.value,
@@ -196,17 +211,62 @@ class ChatController {
     }
   }
 
-  /// Altera o modelo da conversa atual preservando apenas o contexto das mensagens desta conversa
+  /// Altera as configurações da conversa (modelo, backend e estilo de resposta)
+  Future<void> updateConversationSettings({
+    required bool is2B,
+    required bool useCpu,
+    required ResponseStyle newResponseStyle,
+  }) async {
+    if (isLoading.value || isGenerating.value) return;
+
+    final modelOrBackendChanged = (is2B != is2BModel.value) || (useCpu != isCpu);
+    final styleChanged = newResponseStyle != responseStyle.value;
+
+    if (!modelOrBackendChanged && !styleChanged) return;
+
+    responseStyle.value = newResponseStyle;
+    backendsSelected.value = [useCpu, !useCpu];
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.is2B = is2B;
+      conv.useCpu = useCpu;
+      conv.responseStyle = newResponseStyle;
+      await _saveCurrentState();
+    }
+
+    if (modelOrBackendChanged) {
+      await downloadAndLoadModel(
+        is2B: is2B,
+        contextMessages: chatHistory.value,
+        responseStyle: newResponseStyle,
+      );
+    } else if (styleChanged && isModelLoaded.value) {
+      await _repository.startNewChatSession(
+        contextMessages: chatHistory.value,
+        responseStyle: newResponseStyle,
+      );
+      chatHistory.value = [
+        ...chatHistory.value,
+        ChatMessage(
+          text: 'Sistema: Estilo de resposta alterado para "${newResponseStyle.label}".',
+          isUser: false,
+        ),
+      ];
+      _syncMessagesToCurrentConversation();
+      await _saveCurrentState();
+    }
+  }
+
+  /// Mantido para compatibilidade
   Future<void> switchModelWithContext({
     required bool is2B,
     required bool useCpu,
   }) async {
-    if (isLoading.value || isGenerating.value) return;
-
-    backendsSelected.value = [useCpu, !useCpu];
-    await downloadAndLoadModel(
+    await updateConversationSettings(
       is2B: is2B,
-      contextMessages: chatHistory.value,
+      useCpu: useCpu,
+      newResponseStyle: responseStyle.value,
     );
   }
 
@@ -233,9 +293,11 @@ class ChatController {
     ];
     _syncMessagesToCurrentConversation();
 
+    final promptToSend = responseStyle.value.applyToPrompt(trimmedText);
+
     try {
       final stream = _repository.sendMessage(
-        text: trimmedText,
+        text: promptToSend,
         imageBytes: imageBytes,
       );
 

@@ -66,7 +66,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 Text(
                   isLoaded
-                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} (${isCpu ? "CPU" : "GPU"})'
+                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} (${isCpu ? "CPU" : "GPU"}) • ${_controller.responseStyle.value.label}'
                       : 'Nenhum modelo carregado',
                   style: const TextStyle(fontSize: 11),
                 ),

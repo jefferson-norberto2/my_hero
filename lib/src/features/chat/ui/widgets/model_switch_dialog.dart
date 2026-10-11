@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../controller/chat_controller.dart';
+import '../../data/adapter/response_style.dart';
 
 class ModelSwitchDialog extends StatefulWidget {
   final ChatController controller;
@@ -20,12 +21,14 @@ class ModelSwitchDialog extends StatefulWidget {
 class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
   late bool _selectedIs2B;
   late bool _selectedUseCpu;
+  late ResponseStyle _selectedResponseStyle;
 
   @override
   void initState() {
     super.initState();
     _selectedIs2B = widget.controller.is2BModel.value;
     _selectedUseCpu = widget.controller.isCpu;
+    _selectedResponseStyle = widget.controller.responseStyle.value;
   }
 
   @override
@@ -35,7 +38,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
         children: [
           Icon(Icons.tune, color: Colors.teal),
           SizedBox(width: 8),
-          Text('Modelo da Conversa'),
+          Text('Configurações da Conversa'),
         ],
       ),
       content: SingleChildScrollView(
@@ -90,7 +93,45 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                 setState(() => _selectedUseCpu = newSelection.first);
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            const Text(
+              'Estilo de Resposta:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<ResponseStyle>(
+              segments: const [
+                ButtonSegment<ResponseStyle>(
+                  value: ResponseStyle.brief,
+                  label: Text('Breve'),
+                  icon: Icon(Icons.bolt),
+                ),
+                ButtonSegment<ResponseStyle>(
+                  value: ResponseStyle.simple,
+                  label: Text('Simples'),
+                  icon: Icon(Icons.lightbulb_outline),
+                ),
+                ButtonSegment<ResponseStyle>(
+                  value: ResponseStyle.detailed,
+                  label: Text('Detalhada'),
+                  icon: Icon(Icons.menu_book),
+                ),
+              ],
+              selected: {_selectedResponseStyle},
+              onSelectionChanged: (newSelection) {
+                setState(() => _selectedResponseStyle = newSelection.first);
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _selectedResponseStyle.description,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.teal.shade800,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -104,7 +145,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'O contexto recente desta conversa será carregado no novo modelo.',
+                      'O contexto desta conversa e o novo estilo serão mantidos para as próximas perguntas.',
                       style: TextStyle(fontSize: 12, color: Colors.black87),
                     ),
                   ),
@@ -122,12 +163,13 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
         FilledButton(
           onPressed: () {
             Navigator.of(context).pop();
-            widget.controller.switchModelWithContext(
+            widget.controller.updateConversationSettings(
               is2B: _selectedIs2B,
               useCpu: _selectedUseCpu,
+              newResponseStyle: _selectedResponseStyle,
             );
           },
-          child: const Text('Aplicar e Trocar'),
+          child: const Text('Salvar'),
         ),
       ],
     );

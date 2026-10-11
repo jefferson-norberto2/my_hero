@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
+import '../adapter/response_style.dart';
 import '../datasource/chat_history_datasource.dart';
 import '../datasource/gemma_local_datasource.dart';
 import '../datasource/model_download_datasource.dart';
@@ -26,6 +27,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required bool useCpu,
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
+    ResponseStyle responseStyle = ResponseStyle.simple,
   }) async {
     onProgress(0.0, 'Verificando armazenamento local...');
     final filePath = await _downloadDatasource.downloadModel(
@@ -36,7 +38,9 @@ class ChatRepositoryImpl implements ChatRepository {
     onProgress(1.0, 'Carregando modelo na memória...');
     await _gemmaDatasource.installModelFromFile(filePath);
     await _gemmaDatasource.createActiveModel(useCpu: useCpu);
-    await _gemmaDatasource.createChat();
+    await _gemmaDatasource.createChat(
+      systemInstruction: responseStyle.systemInstruction,
+    );
 
     // Sincroniza o contexto recente exclusivo desta conversa com o novo modelo carregado
     await _replayContextMessages(contextMessages);
@@ -45,9 +49,12 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> startNewChatSession({
     List<ChatMessage>? contextMessages,
+    ResponseStyle responseStyle = ResponseStyle.simple,
   }) async {
-    // Descarta qualquer sessão anterior e inicia uma nova sessão limpa
-    await _gemmaDatasource.createChat();
+    // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
+    await _gemmaDatasource.createChat(
+      systemInstruction: responseStyle.systemInstruction,
+    );
 
     // Sincroniza apenas as mensagens exclusivas da conversa atual
     await _replayContextMessages(contextMessages);

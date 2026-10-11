@@ -97,7 +97,7 @@ class ChatDrawer extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '${item.is2B ? "Gemma 2B" : "Gemma 4B"} • ${item.messages.length} msgs',
+                          '${item.is2B ? "Gemma 2B" : "Gemma 4B"} • ${item.responseStyle.label} • ${item.messages.length} msgs',
                           style: const TextStyle(fontSize: 11),
                         ),
                         trailing: IconButton(

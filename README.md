@@ -94,6 +94,10 @@ Os estados das features utilizam o conceito de **Signals** para obter reatividad
 - **Menu Lateral Hamburger (`ChatDrawer`):** Permite alternar entre conversas salvas, criar novas conversas (`+ Nova Conversa`) ou excluir sessões anteriores.
 - **Persistência Local (`ChatHistoryDatasource`):** Armazena todas as conversas e mensagens no armazenamento do dispositivo em formato JSON offline.
 - **Preservação de Contexto ao Trocar de Modelo (`ModelSwitchDialog`):** Ao alternar entre Gemma 2B e 4B (ou entre CPU e GPU) dentro de uma mesma conversa, a engine carrega o novo modelo e sincroniza o histórico recente de mensagens daquela conversa específica via `addQueryChunk`.
+- **Estilos de Resposta por Conversa (`ResponseStyle`):** Cada conversa permite configurar a profundidade desejada das respostas, concatenando automaticamente a instrução correspondente ao final do prompt enviado para o Gemma:
+  - ⚡ **Breve:** Concatena `"Por favor, seja breve e direto na resposta."`
+  - 💡 **Simples (Padrão):** Concatena `"Por favor, me dê alguns detalhes, mas não precisa se aprofundar."`
+  - 📚 **Detalhada:** Concatena `"Por favor, dê mais detalhes sobre o assunto."`
 
 ---
 

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
+import '../adapter/response_style.dart';
 
 abstract class ChatRepository {
   Future<void> loadModel({
@@ -8,10 +9,12 @@ abstract class ChatRepository {
     required bool useCpu,
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
+    ResponseStyle responseStyle = ResponseStyle.simple,
   });
 
   Future<void> startNewChatSession({
     List<ChatMessage>? contextMessages,
+    ResponseStyle responseStyle = ResponseStyle.simple,
   });
 
   Stream<String> sendMessage({

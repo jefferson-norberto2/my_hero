@@ -4,6 +4,7 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
 import 'package:my_hero/src/features/chat/data/datasource/gemma_local_datasource.dart';
 import 'package:my_hero/src/features/chat/data/datasource/model_download_datasource.dart';
@@ -36,7 +37,7 @@ void main() {
   });
 
   group('ChatRepositoryImpl - loadModel', () {
-    test('should download model, install it, create active model and chat successfully', () async {
+    test('should download model, install it, create active model and chat successfully with responseStyle', () async {
       const filePath = '/mock/path/gemma_2b.litertlm';
       final recordedStatuses = <String>[];
       final recordedProgresses = <double>[];
@@ -54,11 +55,13 @@ void main() {
 
       when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
       when(() => mockGemmaDatasource.createActiveModel(useCpu: true)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
+          .thenAnswer((_) async {});
 
       await repository.loadModel(
         is2B: true,
         useCpu: true,
+        responseStyle: ResponseStyle.detailed,
         onProgress: (progress, status) {
           recordedProgresses.add(progress);
           recordedStatuses.add(status);
@@ -80,7 +83,11 @@ void main() {
       ).called(1);
       verify(() => mockGemmaDatasource.installModelFromFile(filePath)).called(1);
       verify(() => mockGemmaDatasource.createActiveModel(useCpu: true)).called(1);
-      verify(() => mockGemmaDatasource.createChat()).called(1);
+      verify(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: ResponseStyle.detailed.systemInstruction,
+        ),
+      ).called(1);
     });
 
     test('should replay contextMessages when provided', () async {
@@ -95,7 +102,8 @@ void main() {
 
       when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
       when(() => mockGemmaDatasource.createActiveModel(useCpu: false)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
+          .thenAnswer((_) async {});
       when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
 
       final messages = [
@@ -111,7 +119,6 @@ void main() {
         contextMessages: messages,
       );
 
-      // Não deve repassar mensagem de 'Sistema:', apenas 'Primeira pergunta' e 'Primeira resposta'
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
     });
 
@@ -134,7 +141,7 @@ void main() {
 
       verifyNever(() => mockGemmaDatasource.installModelFromFile(any()));
       verifyNever(() => mockGemmaDatasource.createActiveModel(useCpu: any(named: 'useCpu')));
-      verifyNever(() => mockGemmaDatasource.createChat());
+      verifyNever(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')));
     });
   });
 
@@ -248,17 +255,26 @@ void main() {
   });
 
   group('ChatRepositoryImpl - startNewChatSession', () {
-    test('should create fresh chat without adding queries when contextMessages is null', () async {
-      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+    test('should create fresh chat with brief style instruction when requested', () async {
+      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
+          .thenAnswer((_) async {});
 
-      await repository.startNewChatSession(contextMessages: null);
+      await repository.startNewChatSession(
+        contextMessages: null,
+        responseStyle: ResponseStyle.brief,
+      );
 
-      verify(() => mockGemmaDatasource.createChat()).called(1);
+      verify(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: ResponseStyle.brief.systemInstruction,
+        ),
+      ).called(1);
       verifyNever(() => mockGemmaDatasource.addQueryChunk(any()));
     });
 
     test('should create fresh chat and replay only non-system messages when contextMessages provided', () async {
-      when(() => mockGemmaDatasource.createChat()).thenAnswer((_) async {});
+      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
+          .thenAnswer((_) async {});
       when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
 
       final messages = [
@@ -267,9 +283,16 @@ void main() {
         ChatMessage(text: 'Prazer, Alice!', isUser: false),
       ];
 
-      await repository.startNewChatSession(contextMessages: messages);
+      await repository.startNewChatSession(
+        contextMessages: messages,
+        responseStyle: ResponseStyle.detailed,
+      );
 
-      verify(() => mockGemmaDatasource.createChat()).called(1);
+      verify(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: ResponseStyle.detailed.systemInstruction,
+        ),
+      ).called(1);
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
     });
   });

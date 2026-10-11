@@ -12,8 +12,10 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_gemma: ^0.13.2
+  get_it: ^9.3.0
   image_picker: ^1.2.1
   path_provider: ^2.1.5
+  signals_flutter: ^7.1.0
 
 dev_dependencies:
   flutter_test:

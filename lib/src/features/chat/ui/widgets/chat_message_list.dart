@@ -42,12 +42,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
         // Desloca para o final quando novas mensagens ou tokens chegam
         _scrollToBottom();
 
-        return ListView.builder(
-          controller: _scrollController,
-          itemCount: messages.length,
-          itemBuilder: (context, index) {
-            return ChatBubble(message: messages[index]);
-          },
+        return SelectionArea(
+          child: ListView.builder(
+            controller: _scrollController,
+            itemCount: messages.length,
+            itemBuilder: (context, index) {
+              return ChatBubble(message: messages[index]);
+            },
+          ),
         );
       },
     );

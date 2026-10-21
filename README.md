@@ -99,6 +99,11 @@ Os estados das features utilizam o conceito de **Signals** para obter reatividad
   - 💡 **Simples (Padrão):** Concatena `"Por favor, me dê alguns detalhes, mas não precisa se aprofundar."`
   - 📚 **Detalhada:** Concatena `"Por favor, dê mais detalhes sobre o assunto."`
 
+### 5. Análise de Imagem Multimodal (Visão Computacional Local)
+- **Habilitação de Visão no Gemma:** Os modelos ativos e as sessões de chat são inicializados com `supportImage: true` e detecção automática do formato de arquivo (`ModelFileType.litertlm`), permitindo que a engine LiteRT-LM aloque e execute os encoders visuais nativos.
+- **Captura Flexível de Mídia:** Suporte à seleção de imagens tanto da **Galeria** quanto diretamente pela **Câmera** através do `MediaPickerService`.
+- **Pré-visualização Interativa:** Ao anexar uma imagem, ela é exibida em miniatura acima da barra de entrada com botão para cancelamento/remoção, permitindo ao usuário digitar uma pergunta personalizada sobre a foto ou enviá-la diretamente com o prompt padrão de análise.
+
 ---
 
 ## 🚀 Como Adicionar uma Nova Feature

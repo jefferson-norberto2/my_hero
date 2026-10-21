@@ -10,11 +10,13 @@ abstract class ChatRepository {
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    bool supportImage = true,
   });
 
   Future<void> startNewChatSession({
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    bool supportImage = true,
   });
 
   Stream<String> sendMessage({

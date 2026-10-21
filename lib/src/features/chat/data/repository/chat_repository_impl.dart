@@ -28,6 +28,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    bool supportImage = true,
   }) async {
     onProgress(0.0, 'Verificando armazenamento local...');
     final filePath = await _downloadDatasource.downloadModel(
@@ -37,8 +38,12 @@ class ChatRepositoryImpl implements ChatRepository {
 
     onProgress(1.0, 'Carregando modelo na memória...');
     await _gemmaDatasource.installModelFromFile(filePath);
-    await _gemmaDatasource.createActiveModel(useCpu: useCpu);
+    await _gemmaDatasource.createActiveModel(
+      useCpu: useCpu,
+      supportImage: supportImage,
+    );
     await _gemmaDatasource.createChat(
+      supportImage: supportImage,
       systemInstruction: responseStyle.systemInstruction,
     );
 
@@ -50,9 +55,11 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> startNewChatSession({
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    bool supportImage = true,
   }) async {
     // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
     await _gemmaDatasource.createChat(
+      supportImage: supportImage,
       systemInstruction: responseStyle.systemInstruction,
     );
 

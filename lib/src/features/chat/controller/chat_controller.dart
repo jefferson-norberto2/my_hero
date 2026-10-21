@@ -27,6 +27,7 @@ class ChatController {
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
+  final attachedImage = signal<Uint8List?>(null);
 
   // Histórico de conversas
   final conversations = signal<List<Conversation>>([]);
@@ -270,35 +271,69 @@ class ChatController {
     );
   }
 
-  Future<void> sendMessage(String text, [Uint8List? imageBytes]) async {
-    final trimmedText = text.trim();
-    if (trimmedText.isEmpty || !isModelLoaded.value || isGenerating.value) return;
+  void setAttachedImage(Uint8List? bytes) {
+    attachedImage.value = bytes;
+  }
 
+  void clearAttachedImage() {
+    attachedImage.value = null;
+  }
+
+  Future<void> pickImage({bool fromCamera = false}) async {
+    try {
+      final imageBytes = fromCamera
+          ? await _mediaPickerService.pickImageFromCamera()
+          : await _mediaPickerService.pickImageFromGallery();
+      if (imageBytes != null) {
+        attachedImage.value = imageBytes;
+      }
+    } catch (e) {
+      chatHistory.value = [
+        ...chatHistory.value,
+        ChatMessage(
+          text: 'Sistema: Erro ao selecionar imagem ($e)',
+          isUser: false,
+        ),
+      ];
+      _syncMessagesToCurrentConversation();
+    }
+  }
+
+  Future<void> sendMessage(String text, [Uint8List? imageBytes]) async {
+    final image = imageBytes ?? attachedImage.value;
+    final trimmedText = text.trim();
+    final effectiveText = trimmedText.isEmpty && image != null
+        ? 'Analise esta imagem'
+        : trimmedText;
+
+    if (effectiveText.isEmpty || !isModelLoaded.value || isGenerating.value) return;
+
+    attachedImage.value = null;
     _stopGenerationFlag = false;
     isGenerating.value = true;
 
     // Atualiza o título se for uma conversa nova
     final conv = currentConversation;
     if (conv != null && (conv.title == 'Nova Conversa' || conv.messages.isEmpty)) {
-      conv.title = trimmedText.length > 25
-          ? '${trimmedText.substring(0, 25)}...'
-          : trimmedText;
+      conv.title = effectiveText.length > 25
+          ? '${effectiveText.substring(0, 25)}...'
+          : effectiveText;
     }
 
     // Adiciona a pergunta do usuário e uma resposta vazia para preenchimento em stream
     chatHistory.value = [
       ...chatHistory.value,
-      ChatMessage(text: trimmedText, isUser: true, imageBytes: imageBytes),
+      ChatMessage(text: effectiveText, isUser: true, imageBytes: image),
       ChatMessage(text: '', isUser: false),
     ];
     _syncMessagesToCurrentConversation();
 
-    final promptToSend = responseStyle.value.applyToPrompt(trimmedText);
+    final promptToSend = responseStyle.value.applyToPrompt(effectiveText);
 
     try {
       final stream = _repository.sendMessage(
         text: promptToSend,
-        imageBytes: imageBytes,
+        imageBytes: image,
       );
 
       await for (final token in stream) {
@@ -329,9 +364,11 @@ class ChatController {
     }
   }
 
-  Future<void> pickAndSendImage(String currentText) async {
+  Future<void> pickAndSendImage(String currentText, {bool fromCamera = false}) async {
     try {
-      final imageBytes = await _mediaPickerService.pickImageFromGallery();
+      final imageBytes = fromCamera
+          ? await _mediaPickerService.pickImageFromCamera()
+          : await _mediaPickerService.pickImageFromGallery();
       if (imageBytes != null) {
         await sendMessage(
           currentText.isEmpty ? 'Analise esta imagem' : currentText,

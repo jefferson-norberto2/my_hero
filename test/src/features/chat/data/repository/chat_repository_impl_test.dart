@@ -54,9 +54,18 @@ void main() {
       });
 
       when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createActiveModel(useCpu: true)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
-          .thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createActiveModel(
+          useCpu: true,
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: any(named: 'systemInstruction'),
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
 
       await repository.loadModel(
         is2B: true,
@@ -82,10 +91,16 @@ void main() {
         ),
       ).called(1);
       verify(() => mockGemmaDatasource.installModelFromFile(filePath)).called(1);
-      verify(() => mockGemmaDatasource.createActiveModel(useCpu: true)).called(1);
+      verify(
+        () => mockGemmaDatasource.createActiveModel(
+          useCpu: true,
+          supportImage: true,
+        ),
+      ).called(1);
       verify(
         () => mockGemmaDatasource.createChat(
           systemInstruction: ResponseStyle.detailed.systemInstruction,
+          supportImage: true,
         ),
       ).called(1);
     });
@@ -101,9 +116,18 @@ void main() {
       ).thenAnswer((_) async => filePath);
 
       when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createActiveModel(useCpu: false)).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
-          .thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createActiveModel(
+          useCpu: false,
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: any(named: 'systemInstruction'),
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
       when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
 
       final messages = [
@@ -256,8 +280,12 @@ void main() {
 
   group('ChatRepositoryImpl - startNewChatSession', () {
     test('should create fresh chat with brief style instruction when requested', () async {
-      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
-          .thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: any(named: 'systemInstruction'),
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
 
       await repository.startNewChatSession(
         contextMessages: null,
@@ -267,14 +295,19 @@ void main() {
       verify(
         () => mockGemmaDatasource.createChat(
           systemInstruction: ResponseStyle.brief.systemInstruction,
+          supportImage: true,
         ),
       ).called(1);
       verifyNever(() => mockGemmaDatasource.addQueryChunk(any()));
     });
 
     test('should create fresh chat and replay only non-system messages when contextMessages provided', () async {
-      when(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')))
-          .thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createChat(
+          systemInstruction: any(named: 'systemInstruction'),
+          supportImage: any(named: 'supportImage'),
+        ),
+      ).thenAnswer((_) async {});
       when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
 
       final messages = [
@@ -291,6 +324,7 @@ void main() {
       verify(
         () => mockGemmaDatasource.createChat(
           systemInstruction: ResponseStyle.detailed.systemInstruction,
+          supportImage: true,
         ),
       ).called(1);
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);

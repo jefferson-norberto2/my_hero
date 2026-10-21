@@ -3,9 +3,16 @@ import '../../../../core/constants/app_constants.dart';
 
 abstract class GemmaLocalDatasource {
   Future<void> initialize();
-  Future<void> installModelFromFile(String filePath);
-  Future<void> createActiveModel({required bool useCpu});
-  Future<void> createChat({String? systemInstruction});
+  Future<void> installModelFromFile(String filePath, {ModelFileType? fileType});
+  Future<void> createActiveModel({
+    required bool useCpu,
+    bool supportImage = true,
+    int maxNumImages = 1,
+  });
+  Future<void> createChat({
+    String? systemInstruction,
+    bool supportImage = true,
+  });
   Future<void> addQueryChunk(Message message);
   Stream<dynamic> generateChatResponseAsync();
   void stopGeneration();
@@ -22,30 +29,46 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   }
 
   @override
-  Future<void> installModelFromFile(String filePath) async {
+  Future<void> installModelFromFile(String filePath, {ModelFileType? fileType}) async {
+    final effectiveFileType = fileType ??
+        (filePath.endsWith('.litertlm')
+            ? ModelFileType.litertlm
+            : (filePath.endsWith('.task')
+                ? ModelFileType.task
+                : ModelFileType.binary));
+
     await FlutterGemma.installModel(
       modelType: ModelType.gemmaIt,
+      fileType: effectiveFileType,
     ).fromFile(filePath).install();
   }
 
   @override
-  Future<void> createActiveModel({required bool useCpu}) async {
+  Future<void> createActiveModel({
+    required bool useCpu,
+    bool supportImage = true,
+    int maxNumImages = 1,
+  }) async {
     final preferredBackend = useCpu ? PreferredBackend.cpu : PreferredBackend.gpu;
     _activeModel = await FlutterGemma.getActiveModel(
       maxTokens: AppConstants.maxTokens,
       preferredBackend: preferredBackend,
-      supportImage: false,
+      supportImage: supportImage,
+      maxNumImages: supportImage ? maxNumImages : null,
     );
   }
 
   @override
-  Future<void> createChat({String? systemInstruction}) async {
+  Future<void> createChat({
+    String? systemInstruction,
+    bool supportImage = true,
+  }) async {
     final model = _activeModel;
     if (model == null) {
       throw StateError('Modelo ativo do Gemma ainda não foi inicializado.');
     }
     _activeChat = await model.createChat(
-      supportImage: false,
+      supportImage: supportImage,
       systemInstruction: systemInstruction ?? AppConstants.systemInstruction,
     );
   }

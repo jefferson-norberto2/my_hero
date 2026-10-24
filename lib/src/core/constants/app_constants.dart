@@ -8,7 +8,7 @@ class AppConstants {
   static const String model4bFileName = 'gemma_4b.litertlm';
 
   static const String systemInstruction =
-      'You are a helpful assistant and always reply in Portuguese.';
+      'You are a helpful assistant.';
 
-  static const int maxTokens = 2048;
+  static const int maxTokens = 16384;
 }

@@ -60,13 +60,13 @@ class _ChatPageState extends State<ChatPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  conv?.title ?? 'My Hero',
+                  conv?.title ?? 'Local Chat',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   isLoaded
-                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} (${isCpu ? "CPU" : "GPU"}) • ${_controller.responseStyle.value.label}'
+                      ? '${is2B ? "Modelo simples" : "Modelo avançado"} (${isCpu ? "Normal" : "Rápido"}) • ${_controller.responseStyle.value.label}'
                       : 'Nenhum modelo carregado',
                   style: const TextStyle(fontSize: 11),
                 ),

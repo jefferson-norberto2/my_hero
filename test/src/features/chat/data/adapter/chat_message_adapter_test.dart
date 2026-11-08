@@ -1,14 +1,14 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 
 void main() {
   group('ChatMessage', () {
     test('should instantiate correctly with required parameters', () {
-      final message = ChatMessage(text: 'Olá Gemma', isUser: true);
+      final message = ChatMessage(text: 'Olá Ollama', isUser: true);
 
-      expect(message.text, 'Olá Gemma');
+      expect(message.text, 'Olá Ollama');
       expect(message.isUser, isTrue);
       expect(message.imageBytes, isNull);
     });
@@ -53,18 +53,17 @@ void main() {
   });
 
   group('ChatMessageAdapter', () {
-    test('should convert ChatMessage without image to Message.text', () {
+    test('should convert ChatMessage without image to Ollama user message format', () {
       final chatMessage = ChatMessage(text: 'Pergunta teste', isUser: true);
 
-      final gemmaMessage = ChatMessageAdapter.toGemmaMessage(chatMessage);
+      final ollamaMap = ChatMessageAdapter.toOllamaMessage(chatMessage);
 
-      expect(gemmaMessage, isA<Message>());
-      expect(gemmaMessage.text, 'Pergunta teste');
-      expect(gemmaMessage.isUser, isTrue);
-      expect(gemmaMessage.imageBytes, isNull);
+      expect(ollamaMap['role'], 'user');
+      expect(ollamaMap['content'], 'Pergunta teste');
+      expect(ollamaMap.containsKey('images'), isFalse);
     });
 
-    test('should convert ChatMessage with imageBytes to Message with image', () {
+    test('should convert ChatMessage with imageBytes to Ollama message with base64 image', () {
       final imageBytes = Uint8List.fromList([1, 2, 3]);
       final chatMessage = ChatMessage(
         text: 'Veja a imagem',
@@ -72,12 +71,11 @@ void main() {
         imageBytes: imageBytes,
       );
 
-      final gemmaMessage = ChatMessageAdapter.toGemmaMessage(chatMessage);
+      final ollamaMap = ChatMessageAdapter.toOllamaMessage(chatMessage);
 
-      expect(gemmaMessage, isA<Message>());
-      expect(gemmaMessage.text, 'Veja a imagem');
-      expect(gemmaMessage.isUser, isTrue);
-      expect(gemmaMessage.imageBytes, imageBytes);
+      expect(ollamaMap['role'], 'user');
+      expect(ollamaMap['content'], 'Veja a imagem');
+      expect(ollamaMap['images'], [base64Encode(imageBytes)]);
     });
 
     test('should convert AI response ChatMessage correctly', () {
@@ -86,11 +84,11 @@ void main() {
         isUser: false,
       );
 
-      final gemmaMessage = ChatMessageAdapter.toGemmaMessage(chatMessage);
+      final ollamaMap = ChatMessageAdapter.toOllamaMessage(chatMessage);
 
-      expect(gemmaMessage.text, 'Resposta gerada pela IA');
-      expect(gemmaMessage.isUser, isFalse);
-      expect(gemmaMessage.imageBytes, isNull);
+      expect(ollamaMap['role'], 'assistant');
+      expect(ollamaMap['content'], 'Resposta gerada pela IA');
+      expect(ollamaMap.containsKey('images'), isFalse);
     });
   });
 }

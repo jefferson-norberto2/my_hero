@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
@@ -13,6 +15,10 @@ void main() {
   late MockMediaPickerService mockMediaPicker;
   late ChatController controller;
 
+  setUpAll(() {
+    registerFallbackValue(ResponseStyle.simple);
+  });
+
   setUp(() {
     mockRepository = MockChatRepository();
     mockMediaPicker = MockMediaPickerService();
@@ -20,11 +26,21 @@ void main() {
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenReturn(null);
+    when(() => mockRepository.checkOllamaHealth()).thenAnswer((_) async => true);
+    when(() => mockRepository.getAvailableModels()).thenAnswer((_) async => [
+      const OllamaModel(
+        name: 'llama3.2:3b',
+        model: 'llama3.2:3b',
+        size: 2000000000,
+        parameterSize: '3.2B',
+      ),
+    ]);
 
     controller = ChatController(
       repository: mockRepository,
       mediaPickerService: mockMediaPicker,
     );
+    controller.selectedModelName.value = 'llama3.2:3b';
   });
 
   group('ChatController - Multimodal Image Handling', () {
@@ -71,6 +87,9 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['A foto mostra um gato.']));
 
@@ -86,6 +105,9 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: fakeBytes,
+          modelName: 'llama3.2:3b',
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
         ),
       ).called(1);
     });
@@ -99,6 +121,9 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['Foto analisada']));
 
@@ -118,6 +143,9 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['Imagem identificada']));
 
@@ -125,6 +153,36 @@ void main() {
 
       expect(controller.chatHistory.value.first.text, 'Descreva esta foto');
       expect(controller.chatHistory.value.first.imageBytes, fakeBytes);
+    });
+  });
+
+  group('ChatController - Ollama Models', () {
+    test('refreshModels populates availableModels when healthy', () async {
+      await controller.refreshModels();
+
+      expect(controller.isOllamaConnected.value, isTrue);
+      expect(controller.availableModels.value.length, 1);
+      expect(controller.availableModels.value.first.name, 'llama3.2:3b');
+    });
+
+    test('loadModel requests preload on repository', () async {
+      when(
+        () => mockRepository.loadModel(
+          modelName: any(named: 'modelName'),
+          onProgress: any(named: 'onProgress'),
+        ),
+      ).thenAnswer((_) async {});
+
+      await controller.loadModel('llama3.2:3b');
+
+      expect(controller.isModelLoaded.value, isTrue);
+      expect(controller.selectedModelName.value, 'llama3.2:3b');
+      verify(
+        () => mockRepository.loadModel(
+          modelName: 'llama3.2:3b',
+          onProgress: any(named: 'onProgress'),
+        ),
+      ).called(1);
     });
   });
 }

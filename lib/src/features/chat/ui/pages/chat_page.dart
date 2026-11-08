@@ -30,7 +30,11 @@ class _ChatPageState extends State<ChatPage> {
       if (error != null && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error)),
+            SnackBar(
+              content: Text(error),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         });
       }
@@ -52,22 +56,31 @@ class _ChatPageState extends State<ChatPage> {
           builder: (context) {
             final conv = _controller.currentConversation;
             final isLoaded = _controller.isModelLoaded.value;
-            final is2B = _controller.is2BModel.value;
-            final isCpu = _controller.isCpu;
+            final isConnected = _controller.isOllamaConnected.value;
+            final modelName = _controller.selectedModelName.value;
+
+            String subtitle;
+            if (!isConnected) {
+              subtitle = 'Ollama desconectado (localhost:11434)';
+            } else if (isLoaded && modelName.isNotEmpty) {
+              subtitle = '$modelName • ${_controller.responseStyle.value.label}';
+            } else if (modelName.isNotEmpty) {
+              subtitle = '$modelName (não carregado na memória)';
+            } else {
+              subtitle = 'Nenhum modelo selecionado';
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  conv?.title ?? 'Local Chat',
+                  conv?.title ?? 'Ollama Chat',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  isLoaded
-                      ? '${is2B ? "Modelo simples" : "Modelo avançado"} (${isCpu ? "Normal" : "Rápido"}) • ${_controller.responseStyle.value.label}'
-                      : 'Nenhum modelo carregado',
+                  subtitle,
                   style: const TextStyle(fontSize: 11),
                 ),
               ],
@@ -78,14 +91,11 @@ class _ChatPageState extends State<ChatPage> {
         actions: [
           SignalBuilder(
             builder: (context) {
-              final isLoaded = _controller.isModelLoaded.value;
               final isGenerating = _controller.isGenerating.value;
-
-              if (!isLoaded) return const SizedBox.shrink();
 
               return IconButton(
                 icon: const Icon(Icons.tune),
-                tooltip: 'Alterar modelo (mantém contexto)',
+                tooltip: 'Trocar modelo / Estilo',
                 onPressed: isGenerating
                     ? null
                     : () => ModelSwitchDialog.show(context, _controller),
@@ -94,15 +104,12 @@ class _ChatPageState extends State<ChatPage> {
           ),
           SignalBuilder(
             builder: (context) {
-              final isLoaded = _controller.isModelLoaded.value;
               final isGenerating = _controller.isGenerating.value;
-
-              if (!isLoaded) return const SizedBox.shrink();
 
               return IconButton(
                 icon: const Icon(Icons.refresh),
-                tooltip: 'Reiniciar modelo',
-                onPressed: isGenerating ? null : _controller.reset,
+                tooltip: 'Atualizar conexão com Ollama',
+                onPressed: isGenerating ? null : _controller.refreshModels,
               );
             },
           ),
@@ -116,7 +123,10 @@ class _ChatPageState extends State<ChatPage> {
               builder: (context) {
                 final isLoaded = _controller.isModelLoaded.value;
                 if (isLoaded) return const SizedBox.shrink();
-                return ModelSelectorWidget(controller: _controller);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: ModelSelectorWidget(controller: _controller),
+                );
               },
             ),
             Expanded(

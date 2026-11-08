@@ -1,241 +1,157 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
-import 'package:my_hero/src/features/chat/data/datasource/gemma_local_datasource.dart';
-import 'package:my_hero/src/features/chat/data/datasource/model_download_datasource.dart';
+import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
 
-class MockGemmaLocalDatasource extends Mock implements GemmaLocalDatasource {}
-class MockModelDownloadDatasource extends Mock implements ModelDownloadDatasource {}
+class MockOllamaRemoteDatasource extends Mock implements OllamaRemoteDatasource {}
 class MockChatHistoryDatasource extends Mock implements ChatHistoryDatasource {}
-class FakeMessage extends Fake implements Message {}
 
 void main() {
-  late MockGemmaLocalDatasource mockGemmaDatasource;
-  late MockModelDownloadDatasource mockDownloadDatasource;
+  late MockOllamaRemoteDatasource mockOllamaDatasource;
   late MockChatHistoryDatasource mockHistoryDatasource;
   late ChatRepositoryImpl repository;
 
-  setUpAll(() {
-    registerFallbackValue(FakeMessage());
-  });
-
   setUp(() {
-    mockGemmaDatasource = MockGemmaLocalDatasource();
-    mockDownloadDatasource = MockModelDownloadDatasource();
+    mockOllamaDatasource = MockOllamaRemoteDatasource();
     mockHistoryDatasource = MockChatHistoryDatasource();
     repository = ChatRepositoryImpl(
-      gemmaDatasource: mockGemmaDatasource,
-      downloadDatasource: mockDownloadDatasource,
+      ollamaDatasource: mockOllamaDatasource,
       historyDatasource: mockHistoryDatasource,
     );
   });
 
+  group('ChatRepositoryImpl - checkOllamaHealth and getAvailableModels', () {
+    test('checkOllamaHealth should delegate to datasource', () async {
+      when(() => mockOllamaDatasource.checkHealth()).thenAnswer((_) async => true);
+
+      final result = await repository.checkOllamaHealth();
+
+      expect(result, isTrue);
+      verify(() => mockOllamaDatasource.checkHealth()).called(1);
+    });
+
+    test('getAvailableModels should delegate to datasource', () async {
+      final mockModels = [
+        const OllamaModel(
+          name: 'llama3.2:3b',
+          model: 'llama3.2:3b',
+          size: 2000000000,
+          parameterSize: '3.2B',
+        ),
+      ];
+
+      when(() => mockOllamaDatasource.getAvailableModels()).thenAnswer((_) async => mockModels);
+
+      final result = await repository.getAvailableModels();
+
+      expect(result, mockModels);
+      verify(() => mockOllamaDatasource.getAvailableModels()).called(1);
+    });
+  });
+
   group('ChatRepositoryImpl - loadModel', () {
-    test('should download model, install it, create active model and chat successfully with responseStyle', () async {
-      const filePath = '/mock/path/gemma_2b.litertlm';
-      final recordedStatuses = <String>[];
-      final recordedProgresses = <double>[];
+    test('should preload model into memory if Ollama is healthy', () async {
+      when(() => mockOllamaDatasource.checkHealth()).thenAnswer((_) async => true);
+      when(() => mockOllamaDatasource.preloadModel('llama3.2:3b')).thenAnswer((_) async {});
 
-      when(
-        () => mockDownloadDatasource.downloadModel(
-          is2B: true,
-          onProgress: any(named: 'onProgress'),
-        ),
-      ).thenAnswer((invocation) async {
-        final onProgress = invocation.namedArguments[#onProgress] as void Function(double, String);
-        onProgress(0.5, 'Baixando...');
-        return filePath;
-      });
-
-      when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
-      when(
-        () => mockGemmaDatasource.createActiveModel(
-          useCpu: true,
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
-      when(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: any(named: 'systemInstruction'),
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
+      final progresses = <double>[];
+      final statuses = <String>[];
 
       await repository.loadModel(
-        is2B: true,
-        useCpu: true,
-        responseStyle: ResponseStyle.detailed,
-        onProgress: (progress, status) {
-          recordedProgresses.add(progress);
-          recordedStatuses.add(status);
+        modelName: 'llama3.2:3b',
+        onProgress: (p, s) {
+          progresses.add(p);
+          statuses.add(s);
         },
       );
 
-      expect(recordedStatuses, contains('Verificando armazenamento local...'));
-      expect(recordedStatuses, contains('Baixando...'));
-      expect(recordedStatuses, contains('Carregando modelo na memória...'));
-      expect(recordedProgresses, contains(0.0));
-      expect(recordedProgresses, contains(0.5));
-      expect(recordedProgresses, contains(1.0));
-
-      verify(
-        () => mockDownloadDatasource.downloadModel(
-          is2B: true,
-          onProgress: any(named: 'onProgress'),
-        ),
-      ).called(1);
-      verify(() => mockGemmaDatasource.installModelFromFile(filePath)).called(1);
-      verify(
-        () => mockGemmaDatasource.createActiveModel(
-          useCpu: true,
-          supportImage: true,
-        ),
-      ).called(1);
-      verify(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: ResponseStyle.detailed.systemInstruction,
-          supportImage: true,
-        ),
-      ).called(1);
+      expect(progresses, contains(1.0));
+      verify(() => mockOllamaDatasource.preloadModel('llama3.2:3b')).called(1);
     });
 
-    test('should replay contextMessages when provided', () async {
-      const filePath = '/mock/path/gemma_4b.litertlm';
-
-      when(
-        () => mockDownloadDatasource.downloadModel(
-          is2B: false,
-          onProgress: any(named: 'onProgress'),
-        ),
-      ).thenAnswer((_) async => filePath);
-
-      when(() => mockGemmaDatasource.installModelFromFile(filePath)).thenAnswer((_) async {});
-      when(
-        () => mockGemmaDatasource.createActiveModel(
-          useCpu: false,
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
-      when(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: any(named: 'systemInstruction'),
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
-
-      final messages = [
-        ChatMessage(text: 'Sistema: Carregado', isUser: false),
-        ChatMessage(text: 'Primeira pergunta', isUser: true),
-        ChatMessage(text: 'Primeira resposta', isUser: false),
-      ];
-
-      await repository.loadModel(
-        is2B: false,
-        useCpu: false,
-        onProgress: (progress, status) {},
-        contextMessages: messages,
-      );
-
-      verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
-    });
-
-    test('should rethrow error when downloadModel fails', () async {
-      when(
-        () => mockDownloadDatasource.downloadModel(
-          is2B: false,
-          onProgress: any(named: 'onProgress'),
-        ),
-      ).thenThrow(Exception('Falha de conexão'));
+    test('should throw StateError if Ollama is unhealthy', () async {
+      when(() => mockOllamaDatasource.checkHealth()).thenAnswer((_) async => false);
 
       expect(
         () => repository.loadModel(
-          is2B: false,
-          useCpu: false,
+          modelName: 'llama3.2:3b',
           onProgress: (_, _) {},
         ),
-        throwsA(isA<Exception>()),
+        throwsA(isA<StateError>()),
       );
 
-      verifyNever(() => mockGemmaDatasource.installModelFromFile(any()));
-      verifyNever(() => mockGemmaDatasource.createActiveModel(useCpu: any(named: 'useCpu')));
-      verifyNever(() => mockGemmaDatasource.createChat(systemInstruction: any(named: 'systemInstruction')));
+      verifyNever(() => mockOllamaDatasource.preloadModel(any()));
     });
   });
 
   group('ChatRepositoryImpl - sendMessage', () {
-    test('should add query chunk and stream string tokens from TextResponse', () async {
-      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.generateChatResponseAsync()).thenAnswer(
-        (_) => Stream.fromIterable([
-          TextResponse('Olá, '),
-          TextResponse('tudo bem?'),
-        ]),
+    test('should format messages correctly and stream tokens from Ollama', () async {
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+        ),
+      ).thenAnswer((_) => Stream.fromIterable(['Olá, ', 'mundo!']));
+
+      final stream = repository.sendMessage(
+        text: 'Oi',
+        modelName: 'llama3.2:3b',
+        history: [],
+        responseStyle: ResponseStyle.simple,
       );
 
-      final tokens = await repository.sendMessage(text: 'Oi').toList();
+      final tokens = await stream.toList();
 
-      expect(tokens, ['Olá, ', 'tudo bem?']);
-      verify(() => mockGemmaDatasource.addQueryChunk(any())).called(1);
-      verify(() => mockGemmaDatasource.generateChatResponseAsync()).called(1);
+      expect(tokens, ['Olá, ', 'mundo!']);
+      verify(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+        ),
+      ).called(1);
     });
 
     test('should support sending message with imageBytes', () async {
       final fakeBytes = Uint8List.fromList([1, 2, 3]);
 
-      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.generateChatResponseAsync()).thenAnswer(
-        (_) => Stream.fromIterable([
-          TextResponse('Foto analisada.'),
-        ]),
-      );
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'lfm3-vl:latest',
+          messages: any(named: 'messages'),
+        ),
+      ).thenAnswer((_) => Stream.fromIterable(['Imagem descrita.']));
 
       final tokens = await repository.sendMessage(
         text: 'Descreva',
         imageBytes: fakeBytes,
+        modelName: 'lfm3-vl:latest',
+        history: [],
       ).toList();
 
-      expect(tokens, ['Foto analisada.']);
-      verify(() => mockGemmaDatasource.addQueryChunk(any())).called(1);
-    });
-
-    test('should ignore chunks that are not TextResponse', () async {
-      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.generateChatResponseAsync()).thenAnswer(
-        (_) => Stream.fromIterable([
-          'chunk desconhecido',
-          TextResponse('Texto válido'),
-          123,
-        ]),
-      );
-
-      final tokens = await repository.sendMessage(text: 'Teste').toList();
-
-      expect(tokens, ['Texto válido']);
+      expect(tokens, ['Imagem descrita.']);
     });
   });
 
   group('ChatRepositoryImpl - stopGeneration and reset', () {
-    test('stopGeneration should call gemma datasource stopGeneration', () {
-      when(() => mockGemmaDatasource.stopGeneration()).thenReturn(null);
+    test('stopGeneration should call datasource stopGeneration', () {
+      when(() => mockOllamaDatasource.stopGeneration()).thenReturn(null);
 
       repository.stopGeneration();
 
-      verify(() => mockGemmaDatasource.stopGeneration()).called(1);
+      verify(() => mockOllamaDatasource.stopGeneration()).called(1);
     });
 
-    test('reset should call gemma datasource close', () {
-      when(() => mockGemmaDatasource.close()).thenReturn(null);
+    test('reset should stop generation', () {
+      when(() => mockOllamaDatasource.stopGeneration()).thenReturn(null);
 
       repository.reset();
 
-      verify(() => mockGemmaDatasource.close()).called(1);
+      verify(() => mockOllamaDatasource.stopGeneration()).called(1);
     });
   });
 
@@ -246,6 +162,7 @@ void main() {
           id: '1',
           title: 'Conv 1',
           messages: [],
+          modelName: 'llama3.2:3b',
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         ),
@@ -265,6 +182,7 @@ void main() {
           id: '1',
           title: 'Conv 1',
           messages: [],
+          modelName: 'llama3.2:3b',
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         ),
@@ -275,59 +193,6 @@ void main() {
       await repository.saveConversations(mockList);
 
       verify(() => mockHistoryDatasource.saveConversations(mockList)).called(1);
-    });
-  });
-
-  group('ChatRepositoryImpl - startNewChatSession', () {
-    test('should create fresh chat with brief style instruction when requested', () async {
-      when(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: any(named: 'systemInstruction'),
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
-
-      await repository.startNewChatSession(
-        contextMessages: null,
-        responseStyle: ResponseStyle.brief,
-      );
-
-      verify(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: ResponseStyle.brief.systemInstruction,
-          supportImage: true,
-        ),
-      ).called(1);
-      verifyNever(() => mockGemmaDatasource.addQueryChunk(any()));
-    });
-
-    test('should create fresh chat and replay only non-system messages when contextMessages provided', () async {
-      when(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: any(named: 'systemInstruction'),
-          supportImage: any(named: 'supportImage'),
-        ),
-      ).thenAnswer((_) async {});
-      when(() => mockGemmaDatasource.addQueryChunk(any())).thenAnswer((_) async {});
-
-      final messages = [
-        ChatMessage(text: 'Sistema: Aviso', isUser: false),
-        ChatMessage(text: 'Meu nome é Alice', isUser: true),
-        ChatMessage(text: 'Prazer, Alice!', isUser: false),
-      ];
-
-      await repository.startNewChatSession(
-        contextMessages: messages,
-        responseStyle: ResponseStyle.detailed,
-      );
-
-      verify(
-        () => mockGemmaDatasource.createChat(
-          systemInstruction: ResponseStyle.detailed.systemInstruction,
-          supportImage: true,
-        ),
-      ).called(1);
-      verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
     });
   });
 }

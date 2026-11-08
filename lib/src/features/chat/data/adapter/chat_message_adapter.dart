@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter_gemma/flutter_gemma.dart';
 
 class ChatMessage {
   final String text;
@@ -45,14 +44,14 @@ class ChatMessage {
 }
 
 class ChatMessageAdapter {
-  static Message toGemmaMessage(ChatMessage message) {
+  static Map<String, dynamic> toOllamaMessage(ChatMessage message) {
+    final map = <String, dynamic>{
+      'role': message.isUser ? 'user' : 'assistant',
+      'content': message.text,
+    };
     if (message.imageBytes != null) {
-      return Message(
-        text: message.text,
-        imageBytes: message.imageBytes!,
-        isUser: message.isUser,
-      );
+      map['images'] = [base64Encode(message.imageBytes!)];
     }
-    return Message.text(text: message.text, isUser: message.isUser);
+    return map;
   }
 }

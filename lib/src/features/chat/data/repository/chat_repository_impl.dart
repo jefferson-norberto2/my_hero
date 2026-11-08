@@ -1,117 +1,108 @@
 import 'dart:typed_data';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
+import '../adapter/ollama_model.dart';
 import '../adapter/response_style.dart';
 import '../datasource/chat_history_datasource.dart';
-import '../datasource/gemma_local_datasource.dart';
-import '../datasource/model_download_datasource.dart';
+import '../datasource/ollama_remote_datasource.dart';
 import 'chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
-  final GemmaLocalDatasource _gemmaDatasource;
-  final ModelDownloadDatasource _downloadDatasource;
+  final OllamaRemoteDatasource _ollamaDatasource;
   final ChatHistoryDatasource _historyDatasource;
 
   ChatRepositoryImpl({
-    required GemmaLocalDatasource gemmaDatasource,
-    required ModelDownloadDatasource downloadDatasource,
+    required OllamaRemoteDatasource ollamaDatasource,
     required ChatHistoryDatasource historyDatasource,
-  })  : _gemmaDatasource = gemmaDatasource,
-        _downloadDatasource = downloadDatasource,
+  })  : _ollamaDatasource = ollamaDatasource,
         _historyDatasource = historyDatasource;
 
   @override
+  Future<bool> checkOllamaHealth() {
+    return _ollamaDatasource.checkHealth();
+  }
+
+  @override
+  Future<List<OllamaModel>> getAvailableModels() {
+    return _ollamaDatasource.getAvailableModels();
+  }
+
+  @override
   Future<void> loadModel({
-    required bool is2B,
-    required bool useCpu,
+    required String modelName,
     required void Function(double progress, String status) onProgress,
-    List<ChatMessage>? contextMessages,
-    ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
   }) async {
-    onProgress(0.0, 'Verificando armazenamento local...');
-    final filePath = await _downloadDatasource.downloadModel(
-      is2B: is2B,
-      onProgress: onProgress,
-    );
+    onProgress(0.2, 'Conectando ao Ollama...');
+    final isHealthy = await _ollamaDatasource.checkHealth();
+    if (!isHealthy) {
+      throw StateError('Ollama não está respondendo em http://localhost:11434.');
+    }
 
-    onProgress(1.0, 'Carregando modelo na memória...');
-    await _gemmaDatasource.installModelFromFile(filePath);
-    await _gemmaDatasource.createActiveModel(
-      useCpu: useCpu,
-      supportImage: supportImage,
-    );
-    await _gemmaDatasource.createChat(
-      supportImage: supportImage,
-      systemInstruction: responseStyle.systemInstruction,
-    );
-
-    // Sincroniza o contexto recente exclusivo desta conversa com o novo modelo carregado
-    await _replayContextMessages(contextMessages);
+    onProgress(0.5, 'Carregando "$modelName" na memória...');
+    await _ollamaDatasource.preloadModel(modelName);
+    onProgress(1.0, 'Modelo "$modelName" pronto!');
   }
 
   @override
   Future<void> startNewChatSession({
-    List<ChatMessage>? contextMessages,
+    String? modelName,
     ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
   }) async {
-    // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
-    await _gemmaDatasource.createChat(
-      supportImage: supportImage,
-      systemInstruction: responseStyle.systemInstruction,
-    );
-
-    // Sincroniza apenas as mensagens exclusivas da conversa atual
-    await _replayContextMessages(contextMessages);
-  }
-
-  Future<void> _replayContextMessages(List<ChatMessage>? contextMessages) async {
-    if (contextMessages == null || contextMessages.isEmpty) return;
-
-    final relevantMessages = contextMessages
-        .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
-        .toList();
-
-    final recentContext = relevantMessages.length > 6
-        ? relevantMessages.sublist(relevantMessages.length - 6)
-        : relevantMessages;
-
-    for (final msg in recentContext) {
-      await _gemmaDatasource.addQueryChunk(
-        ChatMessageAdapter.toGemmaMessage(msg),
-      );
-    }
+    // Para Ollama, cada conversa é isolada pelo histórico de mensagens enviado na requisição
   }
 
   @override
   Stream<String> sendMessage({
     required String text,
     Uint8List? imageBytes,
-  }) async* {
-    final message = ChatMessageAdapter.toGemmaMessage(
-      ChatMessage(text: text, isUser: true, imageBytes: imageBytes),
-    );
+    required String modelName,
+    required List<ChatMessage> history,
+    ResponseStyle responseStyle = ResponseStyle.simple,
+  }) {
+    final messages = <Map<String, dynamic>>[];
 
-    await _gemmaDatasource.addQueryChunk(message);
-    final responseStream = _gemmaDatasource.generateChatResponseAsync();
+    // 1. Mensagem de sistema com instrução de estilo
+    messages.add({
+      'role': 'system',
+      'content': responseStyle.systemInstruction,
+    });
 
-    await for (final chunk in responseStream) {
-      if (chunk is TextResponse) {
-        yield chunk.token;
-      }
+    // 2. Histórico recente de mensagens para contexto (excluindo mensagens de sistema do app)
+    final relevantHistory = history
+        .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
+        .toList();
+
+    // Mantém as últimas 10 mensagens para contexto ágil
+    final contextHistory = relevantHistory.length > 10
+        ? relevantHistory.sublist(relevantHistory.length - 10)
+        : relevantHistory;
+
+    for (final msg in contextHistory) {
+      messages.add(ChatMessageAdapter.toOllamaMessage(msg));
     }
+
+    // 3. Nova mensagem do usuário
+    final userMessage = ChatMessage(
+      text: text,
+      isUser: true,
+      imageBytes: imageBytes,
+    );
+    messages.add(ChatMessageAdapter.toOllamaMessage(userMessage));
+
+    return _ollamaDatasource.generateChatResponseAsync(
+      modelName: modelName,
+      messages: messages,
+    );
   }
 
   @override
   void stopGeneration() {
-    _gemmaDatasource.stopGeneration();
+    _ollamaDatasource.stopGeneration();
   }
 
   @override
   void reset() {
-    _gemmaDatasource.close();
+    _ollamaDatasource.stopGeneration();
   }
 
   @override

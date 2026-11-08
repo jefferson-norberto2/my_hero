@@ -35,7 +35,7 @@ class ChatDrawer extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'Histórico de Conversas',
+                          'Ollama Local Chat',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],
@@ -76,6 +76,7 @@ class ChatDrawer extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final item = convs[index];
                       final isSelected = item.id == currentId;
+                      final modelLabel = item.modelName.isNotEmpty ? item.modelName : 'Ollama';
 
                       return ListTile(
                         selected: isSelected,
@@ -97,7 +98,7 @@ class ChatDrawer extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '${item.is2B ? "Gemma 2B" : "Gemma 4B"} • ${item.responseStyle.label} • ${item.messages.length} msgs',
+                          '$modelLabel • ${item.responseStyle.label} • ${item.messages.length} msgs',
                           style: const TextStyle(fontSize: 11),
                         ),
                         trailing: IconButton(

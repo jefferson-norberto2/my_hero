@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../controller/chat_controller.dart';
+import '../../data/adapter/ollama_model.dart';
 import '../../data/adapter/response_style.dart';
 
 class ModelSwitchDialog extends StatefulWidget {
@@ -19,20 +20,23 @@ class ModelSwitchDialog extends StatefulWidget {
 }
 
 class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
-  late bool _selectedIs2B;
-  late bool _selectedUseCpu;
+  late String _selectedModel;
   late ResponseStyle _selectedResponseStyle;
 
   @override
   void initState() {
     super.initState();
-    _selectedIs2B = widget.controller.is2BModel.value;
-    _selectedUseCpu = widget.controller.isCpu;
+    _selectedModel = widget.controller.selectedModelName.value;
+    if (_selectedModel.isEmpty && widget.controller.availableModels.value.isNotEmpty) {
+      _selectedModel = widget.controller.availableModels.value.first.name;
+    }
     _selectedResponseStyle = widget.controller.responseStyle.value;
   }
 
   @override
   Widget build(BuildContext context) {
+    final models = widget.controller.availableModels.value;
+
     return AlertDialog(
       title: const Row(
         children: [
@@ -49,52 +53,37 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Modelo Gemma:',
+              'Modelo Ollama:',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment<bool>(
-                  value: true,
-                  label: Text('Gemma 2B'),
-                  icon: Icon(Icons.flash_on),
+            if (models.isNotEmpty)
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: models.any((m) => m.name == _selectedModel)
+                    ? _selectedModel
+                    : models.first.name,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-                ButtonSegment<bool>(
-                  value: false,
-                  label: Text('Gemma 4B'),
-                  icon: Icon(Icons.psychology),
-                ),
-              ],
-              selected: {_selectedIs2B},
-              onSelectionChanged: (newSelection) {
-                setState(() => _selectedIs2B = newSelection.first);
-              },
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Backend de execução:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment<bool>(
-                  value: true,
-                  label: Text('CPU'),
-                  icon: Icon(Icons.memory),
-                ),
-                ButtonSegment<bool>(
-                  value: false,
-                  label: Text('GPU'),
-                  icon: Icon(Icons.speed),
-                ),
-              ],
-              selected: {_selectedUseCpu},
-              onSelectionChanged: (newSelection) {
-                setState(() => _selectedUseCpu = newSelection.first);
-              },
-            ),
+                items: models.map((OllamaModel model) {
+                  return DropdownMenuItem<String>(
+                    value: model.name,
+                    child: Text(
+                      '${model.name}${model.parameterSize != null ? " (${model.parameterSize})" : ""}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (newVal) {
+                  if (newVal != null) {
+                    setState(() => _selectedModel = newVal);
+                  }
+                },
+              )
+            else
+              const Text('Nenhum modelo disponível.'),
             const SizedBox(height: 16),
             const Text(
               'Estilo de Resposta:',
@@ -147,7 +136,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'O contexto desta conversa e o novo estilo serão mantidos para as próximas perguntas.',
+                      'O contexto desta conversa e o novo modelo serão mantidos para as próximas perguntas.',
                       style: TextStyle(fontSize: 12, color: Colors.black87),
                     ),
                   ),
@@ -166,8 +155,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
           onPressed: () {
             Navigator.of(context).pop();
             widget.controller.updateConversationSettings(
-              is2B: _selectedIs2B,
-              useCpu: _selectedUseCpu,
+              modelName: _selectedModel,
               newResponseStyle: _selectedResponseStyle,
             );
           },

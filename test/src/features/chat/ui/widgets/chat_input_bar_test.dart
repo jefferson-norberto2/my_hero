@@ -78,6 +78,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['Resposta']));
 

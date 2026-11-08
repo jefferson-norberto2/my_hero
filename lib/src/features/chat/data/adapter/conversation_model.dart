@@ -7,6 +7,8 @@ class Conversation {
   List<ChatMessage> messages;
   String modelName;
   ResponseStyle responseStyle;
+  int lastPromptTokens;
+  int lastEvalTokens;
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -16,6 +18,8 @@ class Conversation {
     required this.messages,
     this.modelName = '',
     this.responseStyle = ResponseStyle.simple,
+    this.lastPromptTokens = 0,
+    this.lastEvalTokens = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -23,6 +27,7 @@ class Conversation {
   // Retrocompatibilidade
   bool get is2B => modelName.contains('2b') || modelName.contains('3b');
   bool get useCpu => true;
+  int get totalTokens => lastPromptTokens + lastEvalTokens;
 
   Conversation copyWith({
     String? id,
@@ -30,6 +35,8 @@ class Conversation {
     List<ChatMessage>? messages,
     String? modelName,
     ResponseStyle? responseStyle,
+    int? lastPromptTokens,
+    int? lastEvalTokens,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -39,6 +46,8 @@ class Conversation {
       messages: messages ?? List.from(this.messages),
       modelName: modelName ?? this.modelName,
       responseStyle: responseStyle ?? this.responseStyle,
+      lastPromptTokens: lastPromptTokens ?? this.lastPromptTokens,
+      lastEvalTokens: lastEvalTokens ?? this.lastEvalTokens,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -52,6 +61,8 @@ class Conversation {
       'modelName': modelName,
       'is2B': is2B,
       'responseStyle': responseStyle.name,
+      'lastPromptTokens': lastPromptTokens,
+      'lastEvalTokens': lastEvalTokens,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -74,6 +85,8 @@ class Conversation {
       modelName: fallbackModel,
       responseStyle:
           ResponseStyle.fromString(json['responseStyle'] as String?),
+      lastPromptTokens: (json['lastPromptTokens'] as num?)?.toInt() ?? 0,
+      lastEvalTokens: (json['lastEvalTokens'] as num?)?.toInt() ?? 0,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),

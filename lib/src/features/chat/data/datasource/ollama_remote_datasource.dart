@@ -9,10 +9,12 @@ abstract class OllamaRemoteDatasource {
   Future<bool> checkHealth();
   Future<List<OllamaModel>> getAvailableModels();
   Future<List<String>> getLoadedModelNames();
+  Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
   Future<void> preloadModel(String modelName);
   Stream<String> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
+    void Function(int promptTokens, int evalTokens)? onMetrics,
   });
   void stopGeneration();
   void close();
@@ -42,8 +44,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
     }
   }
 
-  @override
-  Future<List<String>> getLoadedModelNames() async {
+  Future<List<Map<String, dynamic>>> _getPsModels() async {
     try {
       final response = await _dioClient.dio.get(
         '$_baseUrl/api/ps',
@@ -54,10 +55,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
       );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final models = (response.data['models'] as List<dynamic>?) ?? [];
-        return models
-            .map((m) => (m['name'] as String? ?? m['model'] as String? ?? ''))
-            .where((s) => s.isNotEmpty)
-            .toList();
+        return models.cast<Map<String, dynamic>>();
       }
       return [];
     } catch (_) {
@@ -66,8 +64,33 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   }
 
   @override
+  Future<List<String>> getLoadedModelNames() async {
+    final models = await _getPsModels();
+    return models
+        .map((m) => (m['name'] as String? ?? m['model'] as String? ?? ''))
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName) async {
+    final models = await _getPsModels();
+    for (final m in models) {
+      final name = m['name'] as String? ?? '';
+      final model = m['model'] as String? ?? '';
+      if (name == modelName ||
+          model == modelName ||
+          name.startsWith('$modelName:') ||
+          modelName.startsWith('$name:')) {
+        return m;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<List<OllamaModel>> getAvailableModels() async {
-    final loadedNames = await getLoadedModelNames();
+    final psModels = await _getPsModels();
     final response = await _dioClient.dio.get(
       '$_baseUrl/api/tags',
       options: Options(
@@ -82,14 +105,28 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
         final map = m as Map<String, dynamic>;
         final name = map['name'] as String? ?? '';
         final model = map['model'] as String? ?? '';
-        final isLoaded = loadedNames.any(
-          (loaded) =>
-              loaded == name ||
-              loaded == model ||
-              loaded.startsWith('$name:') ||
-              name.startsWith('$loaded:'),
+
+        final loadedMatch = psModels.where(
+          (loaded) {
+            final lName = loaded['name'] as String? ?? '';
+            final lModel = loaded['model'] as String? ?? '';
+            return lName == name ||
+                lModel == model ||
+                lName.startsWith('$name:') ||
+                name.startsWith('$lName:');
+          },
+        ).firstOrNull;
+
+        final isLoaded = loadedMatch != null;
+        final sizeVram = (loadedMatch?['size_vram'] as num?)?.toInt() ?? 0;
+        final contextLength = (loadedMatch?['context_length'] as num?)?.toInt();
+
+        return OllamaModel.fromJson(
+          map,
+          isLoaded: isLoaded,
+          sizeVram: sizeVram,
+          contextLength: contextLength,
         );
-        return OllamaModel.fromJson(map, isLoaded: isLoaded);
       }).toList();
     }
     return [];
@@ -113,6 +150,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   Stream<String> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
+    void Function(int promptTokens, int evalTokens)? onMetrics,
   }) async* {
     _currentCancelToken?.cancel();
     final cancelToken = CancelToken();
@@ -148,6 +186,15 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
 
       try {
         final json = jsonDecode(trimmed) as Map<String, dynamic>;
+
+        if (json['done'] == true) {
+          final promptCount = (json['prompt_eval_count'] as num?)?.toInt() ?? 0;
+          final evalCount = (json['eval_count'] as num?)?.toInt() ?? 0;
+          if (promptCount > 0 || evalCount > 0) {
+            onMetrics?.call(promptCount, evalCount);
+          }
+        }
+
         final message = json['message'] as Map<String, dynamic>?;
         final content = message?['content'] as String?;
         if (content != null && content.isNotEmpty) {

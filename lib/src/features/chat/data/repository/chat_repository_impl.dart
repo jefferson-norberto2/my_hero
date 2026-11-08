@@ -29,6 +29,11 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName) {
+    return _ollamaDatasource.getLoadedModelInfo(modelName);
+  }
+
+  @override
   Future<void> loadModel({
     required String modelName,
     required void Function(double progress, String status) onProgress,
@@ -60,6 +65,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    void Function(int promptTokens, int evalTokens)? onMetrics,
   }) {
     final messages = <Map<String, dynamic>>[];
 
@@ -100,6 +106,7 @@ class ChatRepositoryImpl implements ChatRepository {
     return _ollamaDatasource.generateChatResponseAsync(
       modelName: modelName,
       messages: messages,
+      onMetrics: onMetrics,
     );
   }
 

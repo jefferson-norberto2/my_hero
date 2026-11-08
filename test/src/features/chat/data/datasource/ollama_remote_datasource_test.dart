@@ -50,7 +50,7 @@ void main() {
       expect(result, isFalse);
     });
 
-    test('getAvailableModels parses models and identifies loaded ones', () async {
+    test('getAvailableModels parses models, identifies loaded ones and extracts vram/contextLength', () async {
       // Mock /api/ps (loaded models)
       when(
         () => mockDio.get(
@@ -63,7 +63,11 @@ void main() {
           statusCode: 200,
           data: {
             'models': [
-              {'name': 'llama3.2:3b'},
+              {
+                'name': 'llama3.2:3b',
+                'size_vram': 2500000000,
+                'context_length': 8192,
+              },
             ],
           },
         ),
@@ -109,8 +113,12 @@ void main() {
       expect(models.length, 2);
       expect(models[0].name, 'llama3.2:3b');
       expect(models[0].isLoaded, isTrue);
+      expect(models[0].sizeVram, 2500000000);
+      expect(models[0].contextLength, 8192);
+
       expect(models[1].name, 'deepseek-r1:8b');
       expect(models[1].isLoaded, isFalse);
+      expect(models[1].sizeVram, 0);
     });
 
     test('preloadModel calls POST /api/generate with model name', () async {
@@ -138,11 +146,11 @@ void main() {
       ).called(1);
     });
 
-    test('generateChatResponseAsync yields content chunks', () async {
+    test('generateChatResponseAsync yields content chunks and calls onMetrics when done', () async {
       final jsonLines = [
         '{"message": {"role": "assistant", "content": "Olá"}, "done": false}\n',
         '{"message": {"role": "assistant", "content": " mundo"}, "done": false}\n',
-        '{"message": {"role": "assistant", "content": "!"}, "done": true}\n',
+        '{"message": {"role": "assistant", "content": "!"}, "done": true, "prompt_eval_count": 42, "eval_count": 3}\n',
       ];
 
       final byteStream = Stream.fromIterable(
@@ -172,16 +180,25 @@ void main() {
         ),
       );
 
+      int? capturedPromptTokens;
+      int? capturedEvalTokens;
+
       final stream = datasource.generateChatResponseAsync(
         modelName: 'llama3.2:3b',
         messages: [
           {'role': 'user', 'content': 'Oi'},
         ],
+        onMetrics: (p, e) {
+          capturedPromptTokens = p;
+          capturedEvalTokens = e;
+        },
       );
 
       final chunks = await stream.toList();
 
       expect(chunks, ['Olá', ' mundo', '!']);
+      expect(capturedPromptTokens, 42);
+      expect(capturedEvalTokens, 3);
     });
   });
 }

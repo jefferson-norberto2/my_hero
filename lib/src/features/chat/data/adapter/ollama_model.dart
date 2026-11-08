@@ -7,6 +7,8 @@ class OllamaModel {
   final String? format;
   final String? quantizationLevel;
   final bool isLoaded;
+  final int sizeVram;
+  final int contextLength;
 
   const OllamaModel({
     required this.name,
@@ -17,6 +19,8 @@ class OllamaModel {
     this.format,
     this.quantizationLevel,
     this.isLoaded = false,
+    this.sizeVram = 0,
+    this.contextLength = 4096,
   });
 
   String get sizeFormatted {
@@ -29,8 +33,25 @@ class OllamaModel {
     return '${mb.toStringAsFixed(0)} MB';
   }
 
-  factory OllamaModel.fromJson(Map<String, dynamic> json, {bool isLoaded = false}) {
+  String get sizeVramFormatted {
+    if (sizeVram <= 0) return '0 MB';
+    final gb = sizeVram / (1024 * 1024 * 1024);
+    if (gb >= 1.0) {
+      return '${gb.toStringAsFixed(1)} GB';
+    }
+    final mb = sizeVram / (1024 * 1024);
+    return '${mb.toStringAsFixed(0)} MB';
+  }
+
+  factory OllamaModel.fromJson(
+    Map<String, dynamic> json, {
+    bool isLoaded = false,
+    int sizeVram = 0,
+    int? contextLength,
+  }) {
     final details = json['details'] as Map<String, dynamic>? ?? {};
+    final defaultCtx = (details['context_length'] as num?)?.toInt() ?? 4096;
+
     return OllamaModel(
       name: json['name'] as String? ?? '',
       model: json['model'] as String? ?? '',
@@ -40,6 +61,8 @@ class OllamaModel {
       format: details['format'] as String?,
       quantizationLevel: details['quantization_level'] as String?,
       isLoaded: isLoaded,
+      sizeVram: sizeVram,
+      contextLength: contextLength ?? defaultCtx,
     );
   }
 
@@ -52,6 +75,8 @@ class OllamaModel {
     String? format,
     String? quantizationLevel,
     bool? isLoaded,
+    int? sizeVram,
+    int? contextLength,
   }) {
     return OllamaModel(
       name: name ?? this.name,
@@ -62,6 +87,8 @@ class OllamaModel {
       format: format ?? this.format,
       quantizationLevel: quantizationLevel ?? this.quantizationLevel,
       isLoaded: isLoaded ?? this.isLoaded,
+      sizeVram: sizeVram ?? this.sizeVram,
+      contextLength: contextLength ?? this.contextLength,
     );
   }
 }

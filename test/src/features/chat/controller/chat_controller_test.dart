@@ -133,6 +133,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['A foto mostra um gato.']));
 
@@ -152,6 +153,7 @@ void main() {
           modelName: 'llama3.2:3b',
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
         ),
       ).called(1);
     });
@@ -175,6 +177,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer((_) => Stream.fromIterable(['Código analisado']));
 

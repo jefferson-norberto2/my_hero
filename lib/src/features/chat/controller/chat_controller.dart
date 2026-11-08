@@ -3,6 +3,7 @@ import 'package:signals_flutter/signals_flutter.dart';
 import '../../../shared/services/media_picker_service.dart';
 import '../data/adapter/chat_attachment.dart';
 import '../data/adapter/chat_message_adapter.dart';
+import '../data/adapter/chat_metrics.dart';
 import '../data/adapter/conversation_model.dart';
 import '../data/adapter/ollama_model.dart';
 import '../data/adapter/response_style.dart';
@@ -32,6 +33,9 @@ class ChatController {
   final errorMessage = signal<String?>(null);
   final attachedAttachment = signal<ChatAttachment?>(null);
   final attachedImage = signal<Uint8List?>(null);
+
+  // Métricas de Contexto e VRAM
+  final currentMetrics = signal<ChatMetrics>(const ChatMetrics());
 
   // Retrocompatibilidade para widgets existentes
   bool get isCpu => true;
@@ -91,12 +95,20 @@ class ChatController {
             models.where((m) => m.name == selectedModelName.value).firstOrNull;
         if (currentModelInfo != null && currentModelInfo.isLoaded) {
           isModelLoaded.value = true;
+          _updateMetricsFromModel(currentModelInfo);
         }
       }
     } catch (e) {
       isOllamaConnected.value = false;
       errorMessage.value = 'Erro ao consultar modelos do Ollama: $e';
     }
+  }
+
+  void _updateMetricsFromModel(OllamaModel model) {
+    currentMetrics.value = currentMetrics.value.copyWith(
+      vramBytes: model.sizeVram,
+      contextLimit: model.contextLength > 0 ? model.contextLength : 4096,
+    );
   }
 
   Future<void> loadSavedConversations() async {
@@ -134,10 +146,15 @@ class ChatController {
     currentConversationId.value = newConv.id;
     chatHistory.value = [];
 
+    currentMetrics.value = currentMetrics.value.copyWith(
+      promptTokens: 0,
+      evalTokens: 0,
+    );
+
     await _saveCurrentState();
   }
 
-  /// Seleciona uma conversa e carrega o histórico e estilo dela
+  /// Seleciona uma conversa e carrega o histórico, estilo e métricas dela
   Future<void> selectConversation(String id) async {
     if (isGenerating.value) return;
 
@@ -151,6 +168,11 @@ class ChatController {
     }
     responseStyle.value = conv.responseStyle;
     is2BModel.value = conv.is2B;
+
+    currentMetrics.value = currentMetrics.value.copyWith(
+      promptTokens: conv.lastPromptTokens,
+      evalTokens: conv.lastEvalTokens,
+    );
   }
 
   Future<void> deleteConversation(String id) async {
@@ -194,6 +216,11 @@ class ChatController {
 
       // Atualiza os modelos disponíveis para refletir que agora está em memória
       await refreshModels();
+
+      final modelInfo = availableModels.value.where((m) => m.name == modelName).firstOrNull;
+      if (modelInfo != null) {
+        _updateMetricsFromModel(modelInfo);
+      }
 
       final conv = currentConversation;
       if (conv != null) {
@@ -396,6 +423,17 @@ class ChatController {
         modelName: currentModel,
         history: chatHistory.value.sublist(0, chatHistory.value.length - 2),
         responseStyle: responseStyle.value,
+        onMetrics: (pTokens, eTokens) {
+          currentMetrics.value = currentMetrics.value.copyWith(
+            promptTokens: pTokens,
+            evalTokens: eTokens,
+          );
+          final c = currentConversation;
+          if (c != null) {
+            c.lastPromptTokens = pTokens;
+            c.lastEvalTokens = eTokens;
+          }
+        },
       );
 
       await for (final token in stream) {

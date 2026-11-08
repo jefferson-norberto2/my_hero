@@ -10,6 +10,8 @@ abstract class ChatRepository {
 
   Future<List<OllamaModel>> getAvailableModels();
 
+  Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
+
   Future<void> loadModel({
     required String modelName,
     required void Function(double progress, String status) onProgress,
@@ -27,6 +29,7 @@ abstract class ChatRepository {
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    void Function(int promptTokens, int evalTokens)? onMetrics,
   });
 
   void stopGeneration();

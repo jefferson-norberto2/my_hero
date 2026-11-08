@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../controller/chat_controller.dart';
 
@@ -13,10 +14,12 @@ class ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<ChatInputBar> {
   final TextEditingController _textController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void dispose() {
     _textController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -153,36 +156,66 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 ),
               ),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    enabled: canType,
-                    decoration: InputDecoration(
-                      hintText: attachedImage != null
-                          ? 'Faça uma pergunta sobre a imagem ou envie direto...'
-                          : 'Digite sua mensagem...',
-                      border: const OutlineInputBorder(),
+                  child: Focus(
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent &&
+                          (HardwareKeyboard.instance.isControlPressed ||
+                              HardwareKeyboard.instance.isMetaPressed) &&
+                          event.logicalKey == LogicalKeyboardKey.enter) {
+                        _handleSend();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: TextField(
+                      focusNode: _focusNode,
+                      controller: _textController,
+                      enabled: canType,
+                      minLines: 2,
+                      maxLines: 10,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: attachedImage != null
+                            ? 'Faça uma pergunta sobre a imagem ou envie direto... (Ctrl+Enter para enviar)'
+                            : 'Digite sua mensagem ou cole código aqui...\n(Enter cria nova linha, Ctrl+Enter envia)',
+                        hintMaxLines: 2,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
                     ),
-                    onSubmitted: (_) => _handleSend(),
                   ),
                 ),
-                IconButton(
-                  onPressed: canType ? _showMediaPickerOptions : null,
-                  color: Colors.teal,
-                  tooltip: 'Anexar imagem (Galeria ou Câmera)',
-                  icon: const Icon(Icons.add_photo_alternate_rounded),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(
-                    !isGenerating ? Icons.send : Icons.stop_circle_rounded,
+                const SizedBox(width: 6),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: canType ? _showMediaPickerOptions : null,
+                        color: Colors.teal,
+                        tooltip: 'Anexar imagem (Galeria ou Câmera)',
+                        icon: const Icon(Icons.add_photo_alternate_rounded),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          !isGenerating ? Icons.send : Icons.stop_circle_rounded,
+                        ),
+                        tooltip: !isGenerating ? 'Enviar mensagem (Ctrl+Enter)' : 'Parar geração',
+                        color: !isGenerating ? Colors.teal : Colors.red,
+                        onPressed: !isModelLoaded
+                            ? null
+                            : (!isGenerating ? _handleSend : widget.controller.stopGeneration),
+                      ),
+                    ],
                   ),
-                  tooltip: !isGenerating ? 'Enviar mensagem' : 'Parar geração',
-                  color: !isGenerating ? Colors.teal : Colors.red,
-                  onPressed: !isModelLoaded
-                      ? null
-                      : (!isGenerating ? _handleSend : widget.controller.stopGeneration),
                 ),
               ],
             ),

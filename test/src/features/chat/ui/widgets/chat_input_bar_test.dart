@@ -1,8 +1,9 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
@@ -10,7 +11,6 @@ import 'package:my_hero/src/shared/services/media_picker_service.dart';
 class MockChatRepository extends Mock implements ChatRepository {}
 class MockMediaPickerService extends Mock implements MediaPickerService {}
 
-// 1x1 transparent PNG bytes for Image.memory testing
 final Uint8List kTransparentImage = Uint8List.fromList(<int>[
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49,
   0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
@@ -25,6 +25,10 @@ void main() {
   late MockMediaPickerService mockMediaPicker;
   late ChatController controller;
 
+  setUpAll(() {
+    registerFallbackValue(ResponseStyle.simple);
+  });
+
   setUp(() {
     mockRepository = MockChatRepository();
     mockMediaPicker = MockMediaPickerService();
@@ -37,6 +41,7 @@ void main() {
       repository: mockRepository,
       mediaPickerService: mockMediaPicker,
     );
+    controller.selectedModelName.value = 'llama3.2:3b';
   });
 
   Widget buildTestWidget() {
@@ -48,12 +53,46 @@ void main() {
   }
 
   group('ChatInputBar Widget Tests', () {
-    testWidgets('renders input bar, photo button and send button', (tester) async {
+    testWidgets('renders input bar with multiline support, photo button and send button', (tester) async {
       await tester.pumpWidget(buildTestWidget());
 
-      expect(find.byType(TextField), findsOneWidget);
+      final textFieldFinder = find.byType(TextField);
+      expect(textFieldFinder, findsOneWidget);
       expect(find.byIcon(Icons.add_photo_alternate_rounded), findsOneWidget);
       expect(find.byIcon(Icons.send), findsOneWidget);
+
+      final textField = tester.widget<TextField>(textFieldFinder);
+      expect(textField.minLines, 2);
+      expect(textField.maxLines, 10);
+      expect(textField.keyboardType, TextInputType.multiline);
+    });
+
+    testWidgets('allows typing multiline text with newlines', (tester) async {
+      controller.isModelLoaded.value = true;
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+        ),
+      ).thenAnswer((_) => Stream.fromIterable(['Resposta']));
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump();
+
+      final multilineText = 'void main() {\n  print("hello world");\n}';
+      await tester.enterText(find.byType(TextField), multilineText);
+      await tester.pump();
+
+      expect(find.text(multilineText), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+
+      expect(find.text(multilineText), findsNothing);
+      expect(controller.chatHistory.value.first.text, multilineText);
     });
 
     testWidgets('shows attached image preview when attachedImage is set', (tester) async {

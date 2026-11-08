@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
@@ -134,6 +135,31 @@ void main() {
       ).toList();
 
       expect(tokens, ['Imagem descrita.']);
+    });
+
+    test('should support sending message with document ChatAttachment', () async {
+      final docAttachment = ChatAttachment(
+        name: 'codigo.dart',
+        type: AttachmentType.document,
+        bytes: Uint8List.fromList([1, 2]),
+        textContent: 'void main() {}',
+      );
+
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+        ),
+      ).thenAnswer((_) => Stream.fromIterable(['Código analisado.']));
+
+      final tokens = await repository.sendMessage(
+        text: 'Explique',
+        attachment: docAttachment,
+        modelName: 'llama3.2:3b',
+        history: [],
+      ).toList();
+
+      expect(tokens, ['Código analisado.']);
     });
   });
 

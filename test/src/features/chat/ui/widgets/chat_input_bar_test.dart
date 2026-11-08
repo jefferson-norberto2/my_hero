@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
@@ -53,12 +54,12 @@ void main() {
   }
 
   group('ChatInputBar Widget Tests', () {
-    testWidgets('renders input bar with multiline support, photo button and send button', (tester) async {
+    testWidgets('renders input bar with multiline support, attachment button and send button', (tester) async {
       await tester.pumpWidget(buildTestWidget());
 
       final textFieldFinder = find.byType(TextField);
       expect(textFieldFinder, findsOneWidget);
-      expect(find.byIcon(Icons.add_photo_alternate_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.attach_file_rounded), findsOneWidget);
       expect(find.byIcon(Icons.send), findsOneWidget);
 
       final textField = tester.widget<TextField>(textFieldFinder);
@@ -73,6 +74,7 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
@@ -95,45 +97,71 @@ void main() {
       expect(controller.chatHistory.value.first.text, multilineText);
     });
 
-    testWidgets('shows attached image preview when attachedImage is set', (tester) async {
+    testWidgets('shows attached image preview when attachment is set', (tester) async {
       controller.isModelLoaded.value = true;
       controller.setAttachedImage(kTransparentImage);
 
       await tester.pumpWidget(buildTestWidget());
       await tester.pump();
 
-      expect(find.text('Imagem anexada'), findsOneWidget);
-      expect(find.text('Pronta para análise multimodal'), findsOneWidget);
+      expect(find.text('imagem.png'), findsOneWidget);
       expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     });
 
-    testWidgets('clears attached image when tapping close icon', (tester) async {
+    testWidgets('shows audio attachment preview and clears it', (tester) async {
       controller.isModelLoaded.value = true;
-      controller.setAttachedImage(kTransparentImage);
+      controller.setAttachment(
+        ChatAttachment(
+          name: 'audio.mp3',
+          type: AttachmentType.audio,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        ),
+      );
 
       await tester.pumpWidget(buildTestWidget());
       await tester.pump();
 
-      expect(find.text('Imagem anexada'), findsOneWidget);
+      expect(find.text('audio.mp3'), findsOneWidget);
+      expect(find.byIcon(Icons.audiotrack_rounded), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pump();
 
-      expect(controller.attachedImage.value, isNull);
-      expect(find.text('Imagem anexada'), findsNothing);
+      expect(controller.attachedAttachment.value, isNull);
+      expect(find.text('audio.mp3'), findsNothing);
     });
 
-    testWidgets('shows bottom sheet modal when tapping photo icon', (tester) async {
+    testWidgets('shows document attachment preview', (tester) async {
+      controller.isModelLoaded.value = true;
+      controller.setAttachment(
+        ChatAttachment(
+          name: 'codigo.dart',
+          type: AttachmentType.document,
+          bytes: Uint8List.fromList([10, 20]),
+          textContent: 'void main() {}',
+        ),
+      );
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pump();
+
+      expect(find.text('codigo.dart'), findsOneWidget);
+      expect(find.byIcon(Icons.description_rounded), findsOneWidget);
+    });
+
+    testWidgets('shows bottom sheet modal with image, audio and document when tapping attachment icon', (tester) async {
       controller.isModelLoaded.value = true;
 
       await tester.pumpWidget(buildTestWidget());
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.add_photo_alternate_rounded));
+      await tester.tap(find.byIcon(Icons.attach_file_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.text('Galeria de fotos'), findsOneWidget);
-      expect(find.text('Câmera'), findsOneWidget);
+      expect(find.text('Adicionar Anexo'), findsOneWidget);
+      expect(find.text('Imagem'), findsOneWidget);
+      expect(find.text('Áudio'), findsOneWidget);
+      expect(find.text('Documento ou Código'), findsOneWidget);
     });
   });
 }

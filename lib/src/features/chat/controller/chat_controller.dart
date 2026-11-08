@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../shared/services/media_picker_service.dart';
+import '../data/adapter/chat_attachment.dart';
 import '../data/adapter/chat_message_adapter.dart';
 import '../data/adapter/conversation_model.dart';
 import '../data/adapter/ollama_model.dart';
@@ -29,6 +30,7 @@ class ChatController {
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
+  final attachedAttachment = signal<ChatAttachment?>(null);
   final attachedImage = signal<Uint8List?>(null);
 
   // Retrocompatibilidade para widgets existentes
@@ -85,7 +87,8 @@ class ChatController {
         }
 
         // Verifica se o modelo atualmente selecionado já está carregado
-        final currentModelInfo = models.where((m) => m.name == selectedModelName.value).firstOrNull;
+        final currentModelInfo =
+            models.where((m) => m.name == selectedModelName.value).firstOrNull;
         if (currentModelInfo != null && currentModelInfo.isLoaded) {
           isModelLoaded.value = true;
         }
@@ -250,21 +253,40 @@ class ChatController {
     }
   }
 
+  void setAttachment(ChatAttachment? attachment) {
+    attachedAttachment.value = attachment;
+    attachedImage.value =
+        attachment?.type == AttachmentType.image ? attachment?.bytes : null;
+  }
+
+  void clearAttachment() {
+    attachedAttachment.value = null;
+    attachedImage.value = null;
+  }
+
   void setAttachedImage(Uint8List? bytes) {
-    attachedImage.value = bytes;
+    if (bytes == null) {
+      clearAttachment();
+    } else {
+      setAttachment(ChatAttachment(
+        name: 'imagem.png',
+        type: AttachmentType.image,
+        bytes: bytes,
+      ));
+    }
   }
 
   void clearAttachedImage() {
-    attachedImage.value = null;
+    clearAttachment();
   }
 
   Future<void> pickImage({bool fromCamera = false}) async {
     try {
-      final imageBytes = fromCamera
+      final attachment = fromCamera
           ? await _mediaPickerService.pickImageFromCamera()
           : await _mediaPickerService.pickImageFromGallery();
-      if (imageBytes != null) {
-        attachedImage.value = imageBytes;
+      if (attachment != null) {
+        setAttachment(attachment);
       }
     } catch (e) {
       chatHistory.value = [
@@ -278,22 +300,17 @@ class ChatController {
     }
   }
 
-  Future<void> pickAndSendImage(String currentText, {bool fromCamera = false}) async {
+  Future<void> pickAudio() async {
     try {
-      final imageBytes = fromCamera
-          ? await _mediaPickerService.pickImageFromCamera()
-          : await _mediaPickerService.pickImageFromGallery();
-      if (imageBytes != null) {
-        await sendMessage(
-          currentText.isEmpty ? 'Analise esta imagem' : currentText,
-          imageBytes,
-        );
+      final attachment = await _mediaPickerService.pickAudioFile();
+      if (attachment != null) {
+        setAttachment(attachment);
       }
     } catch (e) {
       chatHistory.value = [
         ...chatHistory.value,
         ChatMessage(
-          text: 'Sistema: Erro ao selecionar imagem ($e)',
+          text: 'Sistema: Erro ao selecionar arquivo de áudio ($e)',
           isUser: false,
         ),
       ];
@@ -301,20 +318,48 @@ class ChatController {
     }
   }
 
-  Future<void> sendMessage(String text, [Uint8List? imageBytes]) async {
-    final image = imageBytes ?? attachedImage.value;
+  Future<void> pickDocument() async {
+    try {
+      final attachment = await _mediaPickerService.pickDocumentFile();
+      if (attachment != null) {
+        setAttachment(attachment);
+      }
+    } catch (e) {
+      chatHistory.value = [
+        ...chatHistory.value,
+        ChatMessage(
+          text: 'Sistema: Erro ao selecionar documento ($e)',
+          isUser: false,
+        ),
+      ];
+      _syncMessagesToCurrentConversation();
+    }
+  }
+
+  Future<void> sendMessage(String text, [ChatAttachment? customAttachment]) async {
+    final attachment = customAttachment ?? attachedAttachment.value;
     final trimmedText = text.trim();
-    final effectiveText = trimmedText.isEmpty && image != null
-        ? 'Analise esta imagem'
-        : trimmedText;
+
+    String effectiveText = trimmedText;
+    if (effectiveText.isEmpty && attachment != null) {
+      switch (attachment.type) {
+        case AttachmentType.image:
+          effectiveText = 'Analise esta imagem';
+          break;
+        case AttachmentType.audio:
+          effectiveText = 'Analise este áudio';
+          break;
+        case AttachmentType.document:
+          effectiveText = 'Analise este documento/código';
+          break;
+      }
+    }
 
     final currentModel = selectedModelName.value;
     if (effectiveText.isEmpty || currentModel.isEmpty || isGenerating.value) return;
 
-    // Se o modelo ainda não foi explicitamente carregado, marca como pronto e segue
     isModelLoaded.value = true;
-
-    attachedImage.value = null;
+    clearAttachment();
     _stopGenerationFlag = false;
     isGenerating.value = true;
 
@@ -326,10 +371,17 @@ class ChatController {
           : effectiveText;
     }
 
+    final userMessage = ChatMessage(
+      text: effectiveText,
+      isUser: true,
+      attachment: attachment,
+      imageBytes: attachment?.type == AttachmentType.image ? attachment?.bytes : null,
+    );
+
     // Adiciona a pergunta do usuário e uma resposta vazia para preenchimento em stream
     chatHistory.value = [
       ...chatHistory.value,
-      ChatMessage(text: effectiveText, isUser: true, imageBytes: image),
+      userMessage,
       ChatMessage(text: '', isUser: false),
     ];
     _syncMessagesToCurrentConversation();
@@ -339,7 +391,8 @@ class ChatController {
     try {
       final stream = _repository.sendMessage(
         text: promptToSend,
-        imageBytes: image,
+        attachment: attachment,
+        imageBytes: attachment?.type == AttachmentType.image ? attachment?.bytes : null,
         modelName: currentModel,
         history: chatHistory.value.sublist(0, chatHistory.value.length - 2),
         responseStyle: responseStyle.value,
@@ -370,6 +423,29 @@ class ChatController {
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
+    }
+  }
+
+  Future<void> pickAndSendImage(String currentText, {bool fromCamera = false}) async {
+    try {
+      final attachment = fromCamera
+          ? await _mediaPickerService.pickImageFromCamera()
+          : await _mediaPickerService.pickImageFromGallery();
+      if (attachment != null) {
+        await sendMessage(
+          currentText.isEmpty ? 'Analise esta imagem' : currentText,
+          attachment,
+        );
+      }
+    } catch (e) {
+      chatHistory.value = [
+        ...chatHistory.value,
+        ChatMessage(
+          text: 'Sistema: Erro ao selecionar imagem ($e)',
+          isUser: false,
+        ),
+      ];
+      _syncMessagesToCurrentConversation();
     }
   }
 

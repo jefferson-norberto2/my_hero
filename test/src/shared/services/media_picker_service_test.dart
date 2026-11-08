@@ -2,12 +2,16 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockImagePicker extends Mock implements ImagePicker {}
 class FakeXFile extends Fake implements XFile {
   final Uint8List _bytes;
   FakeXFile(this._bytes);
+
+  @override
+  String get name => 'imagem.png';
 
   @override
   Future<Uint8List> readAsBytes() async => _bytes;
@@ -23,7 +27,7 @@ void main() {
   });
 
   group('MediaPickerService', () {
-    test('pickImageFromGallery should return bytes when file selected', () async {
+    test('pickImageFromGallery should return ChatAttachment when file selected', () async {
       final fakeBytes = Uint8List.fromList([1, 2, 3]);
       when(
         () => mockPicker.pickImage(
@@ -34,7 +38,9 @@ void main() {
 
       final result = await service.pickImageFromGallery();
 
-      expect(result, fakeBytes);
+      expect(result, isNotNull);
+      expect(result!.bytes, fakeBytes);
+      expect(result.type, AttachmentType.image);
       verify(
         () => mockPicker.pickImage(
           source: ImageSource.gallery,
@@ -43,7 +49,7 @@ void main() {
       ).called(1);
     });
 
-    test('pickImageFromCamera should return bytes when photo captured', () async {
+    test('pickImageFromCamera should return ChatAttachment when photo captured', () async {
       final fakeBytes = Uint8List.fromList([4, 5, 6]);
       when(
         () => mockPicker.pickImage(
@@ -54,7 +60,9 @@ void main() {
 
       final result = await service.pickImageFromCamera();
 
-      expect(result, fakeBytes);
+      expect(result, isNotNull);
+      expect(result!.bytes, fakeBytes);
+      expect(result.type, AttachmentType.image);
       verify(
         () => mockPicker.pickImage(
           source: ImageSource.camera,
@@ -63,7 +71,7 @@ void main() {
       ).called(1);
     });
 
-    test('pickImage should return null when user cancels selection', () async {
+    test('pickImageFromGallery should return null when user cancels selection', () async {
       when(
         () => mockPicker.pickImage(
           source: ImageSource.gallery,
@@ -71,7 +79,7 @@ void main() {
         ),
       ).thenAnswer((_) async => null);
 
-      final result = await service.pickImage(source: ImageSource.gallery);
+      final result = await service.pickImageFromGallery();
 
       expect(result, isNull);
     });

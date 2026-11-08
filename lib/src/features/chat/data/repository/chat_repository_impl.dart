@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import '../adapter/chat_attachment.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
 import '../adapter/ollama_model.dart';
@@ -55,6 +56,7 @@ class ChatRepositoryImpl implements ChatRepository {
   Stream<String> sendMessage({
     required String text,
     Uint8List? imageBytes,
+    ChatAttachment? attachment,
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,
@@ -82,10 +84,16 @@ class ChatRepositoryImpl implements ChatRepository {
     }
 
     // 3. Nova mensagem do usuário
+    final effectiveImage = imageBytes ??
+        (attachment != null && attachment.type == AttachmentType.image
+            ? attachment.bytes
+            : null);
+
     final userMessage = ChatMessage(
       text: text,
       isUser: true,
-      imageBytes: imageBytes,
+      imageBytes: effectiveImage,
+      attachment: attachment,
     );
     messages.add(ChatMessageAdapter.toOllamaMessage(userMessage));
 

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
@@ -43,50 +44,92 @@ void main() {
     controller.selectedModelName.value = 'llama3.2:3b';
   });
 
-  group('ChatController - Multimodal Image Handling', () {
-    test('initial attachedImage should be null', () {
-      expect(controller.attachedImage.value, isNull);
+  group('ChatController - Attachments (Image, Audio, Document)', () {
+    test('initial attachedAttachment should be null', () {
+      expect(controller.attachedAttachment.value, isNull);
     });
 
-    test('setAttachedImage and clearAttachedImage should update state correctly', () {
+    test('setAttachment and clearAttachment should update state correctly', () {
       final fakeBytes = Uint8List.fromList([1, 2, 3, 4]);
+      final attachment = ChatAttachment(
+        name: 'teste.png',
+        type: AttachmentType.image,
+        bytes: fakeBytes,
+      );
 
-      controller.setAttachedImage(fakeBytes);
+      controller.setAttachment(attachment);
+      expect(controller.attachedAttachment.value, attachment);
       expect(controller.attachedImage.value, fakeBytes);
 
-      controller.clearAttachedImage();
+      controller.clearAttachment();
+      expect(controller.attachedAttachment.value, isNull);
       expect(controller.attachedImage.value, isNull);
     });
 
-    test('pickImage from gallery should store image in attachedImage', () async {
+    test('pickImage from gallery should store image in attachedAttachment', () async {
       final fakeBytes = Uint8List.fromList([10, 20, 30]);
-      when(() => mockMediaPicker.pickImageFromGallery()).thenAnswer((_) async => fakeBytes);
+      final attachment = ChatAttachment(
+        name: 'foto.png',
+        type: AttachmentType.image,
+        bytes: fakeBytes,
+      );
+      when(() => mockMediaPicker.pickImageFromGallery()).thenAnswer((_) async => attachment);
 
       await controller.pickImage(fromCamera: false);
 
-      expect(controller.attachedImage.value, fakeBytes);
+      expect(controller.attachedAttachment.value, attachment);
       verify(() => mockMediaPicker.pickImageFromGallery()).called(1);
     });
 
-    test('pickImage from camera should store image in attachedImage', () async {
-      final fakeBytes = Uint8List.fromList([40, 50, 60]);
-      when(() => mockMediaPicker.pickImageFromCamera()).thenAnswer((_) async => fakeBytes);
+    test('pickAudio should store audio in attachedAttachment', () async {
+      final fakeBytes = Uint8List.fromList([50, 60]);
+      final attachment = ChatAttachment(
+        name: 'gravacao.mp3',
+        type: AttachmentType.audio,
+        bytes: fakeBytes,
+      );
+      when(() => mockMediaPicker.pickAudioFile()).thenAnswer((_) async => attachment);
 
-      await controller.pickImage(fromCamera: true);
+      await controller.pickAudio();
 
-      expect(controller.attachedImage.value, fakeBytes);
-      verify(() => mockMediaPicker.pickImageFromCamera()).called(1);
+      expect(controller.attachedAttachment.value, attachment);
+      expect(controller.attachedAttachment.value?.type, AttachmentType.audio);
+      verify(() => mockMediaPicker.pickAudioFile()).called(1);
     });
 
-    test('sendMessage should consume attachedImage and clear it', () async {
+    test('pickDocument should store document with textContent in attachedAttachment', () async {
+      final fakeBytes = Uint8List.fromList([70, 80]);
+      final attachment = ChatAttachment(
+        name: 'script.dart',
+        type: AttachmentType.document,
+        bytes: fakeBytes,
+        textContent: 'void main() => print("hi");',
+      );
+      when(() => mockMediaPicker.pickDocumentFile()).thenAnswer((_) async => attachment);
+
+      await controller.pickDocument();
+
+      expect(controller.attachedAttachment.value, attachment);
+      expect(controller.attachedAttachment.value?.type, AttachmentType.document);
+      expect(controller.attachedAttachment.value?.textContent, 'void main() => print("hi");');
+      verify(() => mockMediaPicker.pickDocumentFile()).called(1);
+    });
+
+    test('sendMessage should consume attachedAttachment and clear it', () async {
       final fakeBytes = Uint8List.fromList([7, 8, 9]);
+      final attachment = ChatAttachment(
+        name: 'foto.png',
+        type: AttachmentType.image,
+        bytes: fakeBytes,
+      );
       controller.isModelLoaded.value = true;
-      controller.attachedImage.value = fakeBytes;
+      controller.setAttachment(attachment);
 
       when(
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
@@ -95,7 +138,7 @@ void main() {
 
       await controller.sendMessage('O que tem aqui?');
 
-      expect(controller.attachedImage.value, isNull);
+      expect(controller.attachedAttachment.value, isNull);
       expect(controller.chatHistory.value.length, 2);
       expect(controller.chatHistory.value.first.imageBytes, fakeBytes);
       expect(controller.chatHistory.value.first.text, 'O que tem aqui?');
@@ -105,6 +148,7 @@ void main() {
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: fakeBytes,
+          attachment: attachment,
           modelName: 'llama3.2:3b',
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
@@ -112,47 +156,33 @@ void main() {
       ).called(1);
     });
 
-    test('sendMessage with empty text but attachedImage should default to prompt', () async {
+    test('sendMessage with empty text but document attachment defaults prompt', () async {
       final fakeBytes = Uint8List.fromList([11, 22, 33]);
+      final docAttachment = ChatAttachment(
+        name: 'exemplo.py',
+        type: AttachmentType.document,
+        bytes: fakeBytes,
+        textContent: 'print(42)',
+      );
       controller.isModelLoaded.value = true;
-      controller.attachedImage.value = fakeBytes;
+      controller.setAttachment(docAttachment);
 
       when(
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
           imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['Foto analisada']));
+      ).thenAnswer((_) => Stream.fromIterable(['Código analisado']));
 
       await controller.sendMessage('');
 
-      expect(controller.attachedImage.value, isNull);
-      expect(controller.chatHistory.value.first.text, 'Analise esta imagem');
-      expect(controller.chatHistory.value.first.imageBytes, fakeBytes);
-    });
-
-    test('pickAndSendImage should pick image from gallery and send immediately', () async {
-      final fakeBytes = Uint8List.fromList([100, 200]);
-      controller.isModelLoaded.value = true;
-
-      when(() => mockMediaPicker.pickImageFromGallery()).thenAnswer((_) async => fakeBytes);
-      when(
-        () => mockRepository.sendMessage(
-          text: any(named: 'text'),
-          imageBytes: any(named: 'imageBytes'),
-          modelName: any(named: 'modelName'),
-          history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
-        ),
-      ).thenAnswer((_) => Stream.fromIterable(['Imagem identificada']));
-
-      await controller.pickAndSendImage('Descreva esta foto');
-
-      expect(controller.chatHistory.value.first.text, 'Descreva esta foto');
-      expect(controller.chatHistory.value.first.imageBytes, fakeBytes);
+      expect(controller.attachedAttachment.value, isNull);
+      expect(controller.chatHistory.value.first.text, 'Analise este documento/código');
+      expect(controller.chatHistory.value.first.attachment, docAttachment);
     });
   });
 

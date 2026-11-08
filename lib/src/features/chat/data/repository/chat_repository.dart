@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
 import '../adapter/ollama_model.dart';
@@ -22,6 +23,7 @@ abstract class ChatRepository {
   Stream<String> sendMessage({
     required String text,
     Uint8List? imageBytes,
+    ChatAttachment? attachment,
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,

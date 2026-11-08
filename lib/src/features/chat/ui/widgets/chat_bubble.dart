@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../data/adapter/chat_attachment.dart';
 import '../../data/adapter/chat_message_adapter.dart';
 
 class ChatBubble extends StatelessWidget {
@@ -51,7 +52,55 @@ class ChatBubble extends StatelessWidget {
               isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (message.imageBytes != null)
+            if (message.attachment != null && message.attachment!.type != AttachmentType.image)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: message.attachment!.type == AttachmentType.audio
+                          ? Colors.amber.shade700.withValues(alpha: 0.4)
+                          : Colors.teal.shade700.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        message.attachment!.type == AttachmentType.audio
+                            ? Icons.audiotrack_rounded
+                            : Icons.description_rounded,
+                        color: message.attachment!.type == AttachmentType.audio
+                            ? Colors.amber.shade800
+                            : Colors.teal,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              message.attachment!.name,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              message.attachment!.sizeFormatted,
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (message.imageBytes != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: ClipRRect(

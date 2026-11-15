@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
@@ -98,7 +99,12 @@ void main() {
           modelName: 'llama3.2:3b',
           messages: any(named: 'messages'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['Olá, ', 'mundo!']));
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Olá, '),
+          ChatStreamChunk(contentDelta: 'mundo!', isDone: true),
+        ]),
+      );
 
       final stream = repository.sendMessage(
         text: 'Oi',
@@ -107,9 +113,15 @@ void main() {
         responseStyle: ResponseStyle.simple,
       );
 
-      final tokens = await stream.toList();
+      final chunks = await stream.toList();
 
-      expect(tokens, ['Olá, ', 'mundo!']);
+      expect(
+        chunks,
+        const [
+          ChatStreamChunk(contentDelta: 'Olá, '),
+          ChatStreamChunk(contentDelta: 'mundo!', isDone: true),
+        ],
+      );
       verify(
         () => mockOllamaDatasource.generateChatResponseAsync(
           modelName: 'llama3.2:3b',
@@ -126,16 +138,23 @@ void main() {
           modelName: 'lfm3-vl:latest',
           messages: any(named: 'messages'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['Imagem descrita.']));
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Imagem descrita.', isDone: true),
+        ]),
+      );
 
-      final tokens = await repository.sendMessage(
+      final chunks = await repository.sendMessage(
         text: 'Descreva',
         imageBytes: fakeBytes,
         modelName: 'lfm3-vl:latest',
         history: [],
       ).toList();
 
-      expect(tokens, ['Imagem descrita.']);
+      expect(
+        chunks,
+        const [ChatStreamChunk(contentDelta: 'Imagem descrita.', isDone: true)],
+      );
     });
 
     test('should support sending message with document ChatAttachment', () async {
@@ -151,16 +170,23 @@ void main() {
           modelName: 'llama3.2:3b',
           messages: any(named: 'messages'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['Código analisado.']));
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Código analisado.', isDone: true),
+        ]),
+      );
 
-      final tokens = await repository.sendMessage(
+      final chunks = await repository.sendMessage(
         text: 'Explique',
         attachment: docAttachment,
         modelName: 'llama3.2:3b',
         history: [],
       ).toList();
 
-      expect(tokens, ['Código analisado.']);
+      expect(
+        chunks,
+        const [ChatStreamChunk(contentDelta: 'Código analisado.', isDone: true)],
+      );
     });
   });
 

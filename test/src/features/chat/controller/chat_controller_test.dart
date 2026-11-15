@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
@@ -140,7 +142,11 @@ void main() {
           responseStyle: any(named: 'responseStyle'),
           onMetrics: any(named: 'onMetrics'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['A foto mostra um gato.']));
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'A foto mostra um gato.', isDone: true),
+        ]),
+      );
 
       await controller.sendMessage('O que tem aqui?');
 
@@ -184,7 +190,11 @@ void main() {
           responseStyle: any(named: 'responseStyle'),
           onMetrics: any(named: 'onMetrics'),
         ),
-      ).thenAnswer((_) => Stream.fromIterable(['Código analisado']));
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Código analisado', isDone: true),
+        ]),
+      );
 
       await controller.sendMessage('');
 
@@ -349,6 +359,81 @@ void main() {
           onProgress: any(named: 'onProgress'),
         ),
       ).called(1);
+    });
+  });
+
+  group('ChatController - Thinking Stream', () {
+    test('sendMessage updates thinkingContent, isThinking, and final content live', () async {
+      final streamController = StreamController<ChatStreamChunk>();
+      controller.isModelLoaded.value = true;
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => streamController.stream);
+
+      final sendFuture = controller.sendMessage('Qual a capital?');
+      await Future<void>.delayed(Duration.zero);
+
+      streamController.add(
+        const ChatStreamChunk(thinkingDelta: 'Pensando na geografia', isThinking: true),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.chatHistory.value.last.thinkingContent, 'Pensando na geografia');
+      expect(controller.chatHistory.value.last.isThinking, isTrue);
+      expect(controller.chatHistory.value.last.content, isEmpty);
+
+      streamController.add(
+        const ChatStreamChunk(contentDelta: 'Brasília.', isThinking: false, isDone: true),
+      );
+      await streamController.close();
+      await sendFuture;
+
+      expect(controller.chatHistory.value.last.thinkingContent, 'Pensando na geografia');
+      expect(controller.chatHistory.value.last.content, 'Brasília.');
+      expect(controller.chatHistory.value.last.isThinking, isFalse);
+      expect(controller.isGenerating.value, isFalse);
+    });
+
+    test('stopGeneration resets active isThinking flag on assistant message', () async {
+      final streamController = StreamController<ChatStreamChunk>();
+      controller.isModelLoaded.value = true;
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => streamController.stream);
+
+      final sendFuture = controller.sendMessage('Explique');
+      await Future<void>.delayed(Duration.zero);
+
+      streamController.add(
+        const ChatStreamChunk(thinkingDelta: 'Etapa 1', isThinking: true),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.chatHistory.value.last.isThinking, isTrue);
+
+      controller.stopGeneration();
+      expect(controller.chatHistory.value.last.isThinking, isFalse);
+      expect(controller.isGenerating.value, isFalse);
+
+      await streamController.close();
+      await sendFuture;
     });
   });
 }

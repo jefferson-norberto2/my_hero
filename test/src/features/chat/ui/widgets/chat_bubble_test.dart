@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_bubble.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/thinking_block_widget.dart';
 
 void main() {
   Widget buildTestableWidget(Widget child) {
@@ -95,7 +96,77 @@ void main() {
 
       // When message is empty while awaiting streaming tokens, a progress indicator is shown
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(ThinkingBlockWidget), findsNothing);
       expect(find.byType(GptMarkdown), findsNothing);
+    });
+
+    testWidgets('shows Pensando block during thinking and lets user expand live content', (tester) async {
+      final message = ChatMessage(
+        content: '',
+        thinkingContent: 'Avaliando possibilidades...',
+        isThinking: true,
+        isUser: false,
+      );
+
+      await tester.pumpWidget(buildTestableWidget(ChatBubble(message: message)));
+      await tester.pump();
+
+      expect(find.byType(ThinkingBlockWidget), findsOneWidget);
+      expect(find.text('Pensando...'), findsOneWidget);
+      expect(find.byType(GptMarkdown), findsNothing);
+      expect(find.text('Avaliando possibilidades...'), findsNothing);
+
+      // User can expand even while thinking is still streaming
+      await tester.tap(find.text('Pensando...'));
+      await tester.pump();
+
+      expect(find.text('Pensando...'), findsOneWidget);
+      expect(find.text('Avaliando possibilidades...'), findsOneWidget);
+    });
+
+    testWidgets('defaults collapsed after thinking finishes and toggles Ver/Ocultar raciocínio', (tester) async {
+      final message = ChatMessage(
+        content: 'Resposta final concluída.',
+        thinkingContent: 'Linha 1 do raciocínio\nLinha 2 do raciocínio',
+        isThinking: false,
+        isUser: false,
+      );
+
+      await tester.pumpWidget(buildTestableWidget(ChatBubble(message: message)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ThinkingBlockWidget), findsOneWidget);
+      expect(find.text('Ver raciocínio'), findsOneWidget);
+      expect(find.text('Ocultar raciocínio'), findsNothing);
+      expect(find.textContaining('Linha 1 do raciocínio'), findsNothing);
+      expect(find.byType(GptMarkdown), findsOneWidget);
+
+      await tester.tap(find.text('Ver raciocínio'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ocultar raciocínio'), findsOneWidget);
+      expect(find.textContaining('Linha 1 do raciocínio'), findsOneWidget);
+
+      await tester.tap(find.text('Ocultar raciocínio'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ver raciocínio'), findsOneWidget);
+      expect(find.textContaining('Linha 1 do raciocínio'), findsNothing);
+    });
+
+    testWidgets('does not render ThinkingBlockWidget when message has no reasoning', (tester) async {
+      final message = ChatMessage(
+        content: 'Resposta direta sem raciocínio.',
+        thinkingContent: '',
+        isThinking: false,
+        isUser: false,
+      );
+
+      await tester.pumpWidget(buildTestableWidget(ChatBubble(message: message)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ThinkingBlockWidget), findsNothing);
+      expect(find.byType(GptMarkdown), findsOneWidget);
     });
   });
 }

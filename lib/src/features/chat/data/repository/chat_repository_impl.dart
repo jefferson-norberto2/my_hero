@@ -6,6 +6,7 @@ import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasourc
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -91,7 +92,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Stream<String> sendMessage({
+  Stream<ChatStreamChunk> sendMessage({
     required String text,
     Uint8List? imageBytes,
     ChatAttachment? attachment,

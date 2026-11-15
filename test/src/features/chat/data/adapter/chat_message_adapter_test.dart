@@ -63,6 +63,30 @@ void main() {
       expect(updatedBytes.isUser, isFalse);
       expect(updatedBytes.imageBytes, newBytes);
     });
+
+    test('should track thinkingContent, content, isThinking, and JSON round-trip', () {
+      final message = ChatMessage(
+        content: 'Resposta final',
+        thinkingContent: 'Raciocínio passo a passo',
+        isThinking: true,
+        isUser: false,
+      );
+
+      expect(message.content, 'Resposta final');
+      expect(message.text, 'Resposta final');
+      expect(message.thinkingContent, 'Raciocínio passo a passo');
+      expect(message.isThinking, isTrue);
+      expect(message.hasThinking, isTrue);
+
+      final updated = message.copyWith(isThinking: false);
+      expect(updated.isThinking, isFalse);
+      expect(updated.thinkingContent, 'Raciocínio passo a passo');
+
+      final restored = ChatMessage.fromJson(updated.toJson());
+      expect(restored.content, 'Resposta final');
+      expect(restored.thinkingContent, 'Raciocínio passo a passo');
+      expect(restored.isThinking, isFalse);
+    });
   });
 
   group('ChatMessageAdapter', () {

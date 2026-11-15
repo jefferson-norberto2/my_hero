@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_thinking_parser.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 /// Remote datasource communicating with the Ollama HTTP API.
@@ -14,7 +16,7 @@ abstract class OllamaRemoteDatasource {
   Future<List<String>> getLoadedModelNames();
   Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
   Future<void> preloadModel(String modelName);
-  Stream<String> generateChatResponseAsync({
+  Stream<ChatStreamChunk> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
     void Function(int promptTokens, int evalTokens)? onMetrics,
@@ -161,7 +163,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   }
 
   @override
-  Stream<String> generateChatResponseAsync({
+  Stream<ChatStreamChunk> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
     void Function(int promptTokens, int evalTokens)? onMetrics,
@@ -188,6 +190,9 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
     final stream = response.data?.stream;
     if (stream == null) return;
 
+    final parser = OllamaThinkingParser();
+    var sawDoneChunk = false;
+
     final lineStream = stream
         .cast<List<int>>()
         .transform(utf8.decoder)
@@ -202,6 +207,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
         final json = jsonDecode(trimmed) as Map<String, dynamic>;
 
         if (json['done'] == true) {
+          sawDoneChunk = true;
           final promptCount = (json['prompt_eval_count'] as num?)?.toInt() ?? 0;
           final evalCount = (json['eval_count'] as num?)?.toInt() ?? 0;
           if (promptCount > 0 || evalCount > 0) {
@@ -209,13 +215,19 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
           }
         }
 
-        final message = json['message'] as Map<String, dynamic>?;
-        final content = message?['content'] as String?;
-        if (content != null && content.isNotEmpty) {
-          yield content;
+        final chunk = parser.parseJsonChunk(json);
+        if (!chunk.isEmpty) {
+          yield chunk;
         }
       } catch (_) {
         // Ignore malformed NDJSON chunks.
+      }
+    }
+
+    if (!cancelToken.isCancelled && !sawDoneChunk) {
+      final tail = parser.flush();
+      if (!tail.isEmpty) {
+        yield tail;
       }
     }
   }

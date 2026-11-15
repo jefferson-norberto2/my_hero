@@ -520,7 +520,7 @@ class ChatController {
         },
       );
 
-      await for (final token in stream) {
+      await for (final chunk in stream) {
         if (_stopGenerationFlag) break;
 
         final currentList = List<ChatMessage>.from(chatHistory.value);
@@ -528,7 +528,9 @@ class ChatController {
         final lastMsg = currentList[lastIndex];
 
         currentList[lastIndex] = lastMsg.copyWith(
-          text: lastMsg.text + token,
+          thinkingContent: lastMsg.thinkingContent + chunk.thinkingDelta,
+          content: lastMsg.content + chunk.contentDelta,
+          isThinking: chunk.isDone ? false : chunk.isThinking,
         );
         chatHistory.value = currentList;
       }
@@ -537,11 +539,20 @@ class ChatController {
         final currentList = List<ChatMessage>.from(chatHistory.value);
         final lastIndex = currentList.length - 1;
         currentList[lastIndex] = currentList[lastIndex].copyWith(
-          text: 'Sistema: Erro ao gerar resposta ($e)',
+          content: 'Sistema: Erro ao gerar resposta ($e)',
+          isThinking: false,
         );
         chatHistory.value = currentList;
       }
     } finally {
+      final currentList = List<ChatMessage>.from(chatHistory.value);
+      if (currentList.isNotEmpty && currentList.last.isThinking) {
+        final lastIndex = currentList.length - 1;
+        currentList[lastIndex] = currentList[lastIndex].copyWith(
+          isThinking: false,
+        );
+        chatHistory.value = currentList;
+      }
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
@@ -564,6 +575,14 @@ class ChatController {
     if (isGenerating.value) {
       _stopGenerationFlag = true;
       _repository.stopGeneration();
+      final currentList = List<ChatMessage>.from(chatHistory.value);
+      if (currentList.isNotEmpty && currentList.last.isThinking) {
+        final lastIndex = currentList.length - 1;
+        currentList[lastIndex] = currentList[lastIndex].copyWith(
+          isThinking: false,
+        );
+        chatHistory.value = currentList;
+      }
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       _saveCurrentState();

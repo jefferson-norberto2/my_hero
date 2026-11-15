@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/thinking_block_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../data/adapter/chat_attachment.dart';
-import '../../data/adapter/chat_message_adapter.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
@@ -11,7 +12,7 @@ class ChatBubble extends StatelessWidget {
   const ChatBubble({super.key, required this.message});
 
   bool get _isSystemMessage =>
-      !message.isUser && message.text.startsWith('Sistema:');
+      !message.isUser && message.content.startsWith('Sistema:');
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +23,9 @@ class ChatBubble extends StatelessWidget {
     final isUser = message.isUser;
     final theme = Theme.of(context);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.85;
-    final isWaitingFirstToken = !isUser && message.text.isEmpty;
+    final hasThinking = !isUser && message.hasThinking;
+    final isWaitingFirstToken =
+        !isUser && message.content.isEmpty && !hasThinking;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -112,6 +115,16 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ),
               ),
+            if (hasThinking)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: message.content.isNotEmpty ? 8.0 : 0.0,
+                ),
+                child: ThinkingBlockWidget(
+                  thinkingContent: message.thinkingContent,
+                  isThinking: message.isThinking,
+                ),
+              ),
             if (isWaitingFirstToken)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4.0),
@@ -121,9 +134,9 @@ class ChatBubble extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            else
+            else if (isUser || message.content.isNotEmpty)
               GptMarkdown(
-                message.text,
+                message.content,
                 style: TextStyle(
                   color: isUser
                       ? theme.colorScheme.onPrimaryContainer
@@ -133,14 +146,14 @@ class ChatBubble extends StatelessWidget {
                 ),
                 onLinkTap: (url, _) => _handleLinkTap(context, url),
               ),
-            if (!isUser && message.text.isNotEmpty)
+            if (!isUser && message.content.isNotEmpty)
               Align(
                 alignment: Alignment.centerRight,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 4.0),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () => _copyToClipboard(context, message.text),
+                    onTap: () => _copyToClipboard(context, message.content),
                     child: Padding(
                       padding: const EdgeInsets.all(4.0),
                       child: Row(

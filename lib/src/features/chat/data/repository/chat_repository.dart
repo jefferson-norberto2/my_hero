@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -31,7 +32,7 @@ abstract class ChatRepository {
     ResponseStyle responseStyle = ResponseStyle.simple,
   });
 
-  Stream<String> sendMessage({
+  Stream<ChatStreamChunk> sendMessage({
     required String text,
     Uint8List? imageBytes,
     ChatAttachment? attachment,

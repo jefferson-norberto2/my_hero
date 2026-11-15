@@ -248,4 +248,46 @@ void main() {
       verify(() => mockHistoryDatasource.saveConversations(mockList)).called(1);
     });
   });
+
+  group('ChatRepositoryImpl - Context Configuration', () {
+    test('getModelMaxContextLength delegates to ollamaDatasource', () async {
+      when(() => mockOllamaDatasource.getModelMaxContextLength('qwen2.5:7b'))
+          .thenAnswer((_) async => 32768);
+
+      final result = await repository.getModelMaxContextLength('qwen2.5:7b');
+
+      expect(result, 32768);
+      verify(() => mockOllamaDatasource.getModelMaxContextLength('qwen2.5:7b'))
+          .called(1);
+    });
+
+    test('sendMessage forwards numCtx to generateChatResponseAsync', () async {
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: any(named: 'modelName'),
+          messages: any(named: 'messages'),
+          numCtx: any(named: 'numCtx'),
+        ),
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Ok', isDone: true),
+        ]),
+      );
+
+      await repository.sendMessage(
+        text: 'Olá',
+        modelName: 'llama3.2:3b',
+        history: const [],
+        numCtx: 16384,
+      ).toList();
+
+      verify(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+          numCtx: 16384,
+        ),
+      ).called(1);
+    });
+  });
 }

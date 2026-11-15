@@ -3,6 +3,7 @@ import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -16,11 +17,19 @@ abstract class ChatRepository {
 
   Future<void> saveOllamaBaseUrl(String url);
 
+  Future<ContextMode> loadContextMode();
+
+  Future<int> loadManualContextLength();
+
+  Future<double?> loadServerMemoryLimitGb();
+
   Future<bool> checkOllamaHealth([String? customUrl]);
 
   Future<List<OllamaModel>> getAvailableModels();
 
   Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
+
+  Future<int> getModelMaxContextLength(String modelName);
 
   Future<void> loadModel({
     required String modelName,
@@ -39,6 +48,7 @@ abstract class ChatRepository {
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   });
 

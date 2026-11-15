@@ -7,6 +7,7 @@ import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasour
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -51,6 +52,30 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<ContextMode> loadContextMode() async {
+    if (_settingsDatasource != null) {
+      return _settingsDatasource.getContextMode();
+    }
+    return ContextMode.automatic;
+  }
+
+  @override
+  Future<int> loadManualContextLength() async {
+    if (_settingsDatasource != null) {
+      return _settingsDatasource.getManualContextLength();
+    }
+    return ContextSettings.fallbackMaxContext;
+  }
+
+  @override
+  Future<double?> loadServerMemoryLimitGb() async {
+    if (_settingsDatasource != null) {
+      return _settingsDatasource.getServerMemoryLimitGb();
+    }
+    return null;
+  }
+
+  @override
   Future<bool> checkOllamaHealth([String? customUrl]) {
     return _ollamaDatasource.checkHealth(customUrl);
   }
@@ -63,6 +88,11 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName) {
     return _ollamaDatasource.getLoadedModelInfo(modelName);
+  }
+
+  @override
+  Future<int> getModelMaxContextLength(String modelName) {
+    return _ollamaDatasource.getModelMaxContextLength(modelName);
   }
 
   @override
@@ -99,6 +129,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String modelName,
     required List<ChatMessage> history,
     ResponseStyle responseStyle = ResponseStyle.simple,
+    int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   }) {
     final messages = <Map<String, dynamic>>[];
@@ -140,6 +171,7 @@ class ChatRepositoryImpl implements ChatRepository {
     return _ollamaDatasource.generateChatResponseAsync(
       modelName: modelName,
       messages: messages,
+      numCtx: numCtx,
       onMetrics: onMetrics,
     );
   }

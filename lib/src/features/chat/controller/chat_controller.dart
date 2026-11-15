@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/utils/url_utils.dart';
@@ -5,10 +6,12 @@ import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_context_calculator.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/memory_allocation.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
@@ -37,12 +40,16 @@ class ChatController {
   final loadingProgress = signal<double>(0.0);
   final loadingStatus = signal<String>('');
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
+  final contextMode = signal<ContextMode>(ContextMode.automatic);
+  final manualContextLength =
+      signal<int>(ContextSettings.fallbackMaxContext);
+  final serverMemoryLimitGb = signal<double?>(null);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
   final attachedAttachment = signal<ChatAttachment?>(null);
   final attachedImage = signal<Uint8List?>(null);
 
-  // Context and VRAM metrics
+  // Context and hardware memory metrics
   final currentMetrics = signal<ChatMetrics>(const ChatMetrics());
 
   // Conversation history
@@ -50,6 +57,7 @@ class ChatController {
   final currentConversationId = signal<String?>(null);
 
   bool _stopGenerationFlag = false;
+  final Set<String> _queriedMaxContextModels = <String>{};
 
   Conversation? get currentConversation {
     final id = currentConversationId.value;
@@ -70,13 +78,29 @@ class ChatController {
       availableModels: List<OllamaModel>.from(availableModels.value),
       isOllamaConnected: isOllamaConnected.value,
       isModelLoaded: isModelLoaded.value,
+      contextMode: contextMode.value,
+      manualContextLength: manualContextLength.value,
+      serverMemoryLimitGb: serverMemoryLimitGb.value,
     );
   }
 
   Future<void> init() async {
     await loadSavedConversations();
+    await loadContextSettings();
     await loadOllamaServerUrl();
     await refreshModels();
+  }
+
+  /// Loads persisted context window and server memory settings.
+  Future<void> loadContextSettings() async {
+    try {
+      contextMode.value = await _repository.loadContextMode();
+      manualContextLength.value = await _repository.loadManualContextLength();
+      serverMemoryLimitGb.value =
+          await _repository.loadServerMemoryLimitGb();
+    } catch (_) {
+      // Keep default dynamic context configuration on read errors.
+    }
   }
 
   Future<void> loadOllamaServerUrl() async {
@@ -128,11 +152,18 @@ class ChatController {
           selectedModelName.value = target;
         }
 
+        if (selectedModelName.value.isNotEmpty) {
+          await _fetchAndApplyModelMaxContext(selectedModelName.value);
+        }
+
         // Check whether the currently selected model is already loaded.
-        final currentModelInfo =
-            models.where((m) => m.name == selectedModelName.value).firstOrNull;
-        if (currentModelInfo != null && currentModelInfo.isLoaded) {
-          isModelLoaded.value = true;
+        final currentModelInfo = availableModels.value
+            .where((m) => m.name == selectedModelName.value)
+            .firstOrNull;
+        if (currentModelInfo != null) {
+          if (currentModelInfo.isLoaded) {
+            isModelLoaded.value = true;
+          }
           _updateMetricsFromModel(currentModelInfo);
         }
       }
@@ -142,20 +173,89 @@ class ChatController {
     }
   }
 
+  Future<void> _fetchAndApplyModelMaxContext(
+    String modelName, {
+    bool force = false,
+  }) async {
+    if (modelName.isEmpty) return;
+    if (!force && _queriedMaxContextModels.contains(modelName)) return;
+
+    try {
+      final maxCtx = await _repository.getModelMaxContextLength(modelName);
+      _queriedMaxContextModels.add(modelName);
+      if (maxCtx <= 0) return;
+
+      availableModels.value = availableModels.value.map((m) {
+        if (m.name == modelName) {
+          return m.copyWith(maxContextLength: maxCtx);
+        }
+        return m;
+      }).toList();
+    } catch (_) {
+      // Preserve fallback max context length if /api/show fails.
+    }
+  }
+
+  MemoryAllocation _resolveAllocationForModel(OllamaModel model) {
+    if (!model.isLoaded) return const MemoryAllocation.empty();
+    if (model.memoryAllocation.computeMode != ComputeMode.none) {
+      return model.memoryAllocation;
+    }
+    if (model.sizeVram > 0) {
+      return OllamaMemoryParser.fromBytes(
+        sizeBytes: model.sizeVram,
+        vramBytes: model.sizeVram,
+      );
+    }
+    return const MemoryAllocation.empty();
+  }
+
+  int _resolveActiveNumCtxForState({
+    OllamaModel? model,
+    MemoryAllocation? allocation,
+    int? currentStepNumCtx,
+    int estimatedTokens = 0,
+  }) {
+    final modelMax = model != null
+        ? math.max(model.maxContextLength, model.contextLength)
+        : currentMetrics.value.maxContextLength;
+    final mem = allocation ?? currentMetrics.value.memoryAllocation;
+    final loadedSize =
+        mem.totalBytes > 0 ? mem.totalBytes : (model?.size ?? 0);
+
+    return OllamaContextCalculator.resolveNumCtx(
+      mode: contextMode.value,
+      manualContextLength: manualContextLength.value,
+      modelMaxContext: modelMax,
+      currentStepNumCtx:
+          currentStepNumCtx ?? ContextSettings.fallbackMaxContext,
+      estimatedTokens: estimatedTokens,
+      serverMemoryLimitGb: serverMemoryLimitGb.value,
+      loadedModelSizeBytes: loadedSize,
+      computeMode: mem.computeMode,
+    );
+  }
+
   void _updateMetricsFromModel(OllamaModel model) {
-    final allocation = model.memoryAllocation.computeMode != ComputeMode.none
-        ? model.memoryAllocation
-        : (model.isLoaded && model.sizeVram > 0
-            ? OllamaMemoryParser.fromBytes(
-                sizeBytes: model.sizeVram,
-                vramBytes: model.sizeVram,
-              )
-            : const MemoryAllocation.empty());
+    final allocation = _resolveAllocationForModel(model);
+    final modelMax = math.max(model.maxContextLength, model.contextLength);
+    final activeNumCtx = _resolveActiveNumCtxForState(
+      model: model,
+      allocation: allocation,
+      currentStepNumCtx: currentConversation?.activeNumCtx,
+      estimatedTokens: currentMetrics.value.totalTokens,
+    );
 
     currentMetrics.value = currentMetrics.value.copyWith(
       memoryAllocation: allocation,
-      contextLimit: model.contextLength > 0 ? model.contextLength : 4096,
+      contextLimit: activeNumCtx,
+      maxContextLength: modelMax,
     );
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.activeNumCtx = activeNumCtx;
+    }
   }
 
   Future<void> loadSavedConversations() async {
@@ -181,12 +281,22 @@ class ChatController {
             ? availableModels.value.first.name
             : '');
 
+    final activeModel = availableModels.value
+        .where((m) => m.name == modelToUse)
+        .firstOrNull;
+    final initialNumCtx = _resolveActiveNumCtxForState(
+      model: activeModel,
+      currentStepNumCtx: ContextSettings.fallbackMaxContext,
+      estimatedTokens: 0,
+    );
+
     final newConv = Conversation(
       id: now.millisecondsSinceEpoch.toString(),
       title: 'Nova Conversa',
       messages: [],
       modelName: modelToUse,
       responseStyle: responseStyle.value,
+      activeNumCtx: initialNumCtx,
       createdAt: now,
       updatedAt: now,
     );
@@ -198,6 +308,10 @@ class ChatController {
     currentMetrics.value = currentMetrics.value.copyWith(
       promptTokens: 0,
       evalTokens: 0,
+      contextLimit: initialNumCtx,
+      maxContextLength: activeModel != null
+          ? math.max(activeModel.maxContextLength, activeModel.contextLength)
+          : currentMetrics.value.maxContextLength,
     );
 
     await _saveCurrentState();
@@ -217,9 +331,22 @@ class ChatController {
     }
     responseStyle.value = conv.responseStyle;
 
+    final activeModel = availableModels.value
+        .where((m) => m.name == selectedModelName.value)
+        .firstOrNull;
+    final restoredNumCtx = _resolveActiveNumCtxForState(
+      model: activeModel,
+      currentStepNumCtx: conv.activeNumCtx,
+      estimatedTokens: conv.totalTokens,
+    );
+
     currentMetrics.value = currentMetrics.value.copyWith(
       promptTokens: conv.lastPromptTokens,
       evalTokens: conv.lastEvalTokens,
+      contextLimit: restoredNumCtx,
+      maxContextLength: activeModel != null
+          ? math.max(activeModel.maxContextLength, activeModel.contextLength)
+          : currentMetrics.value.maxContextLength,
     );
   }
 
@@ -260,8 +387,9 @@ class ChatController {
       isModelLoaded.value = true;
       isLoading.value = false;
 
-      // Refresh available models to reflect memory allocation and context limit.
+      // Refresh available models and native context capacity from /api/ps & /api/show.
       await refreshModels();
+      await _fetchAndApplyModelMaxContext(modelName, force: true);
 
       final modelInfo =
           availableModels.value.where((m) => m.name == modelName).firstOrNull;
@@ -309,11 +437,24 @@ class ChatController {
 
     selectedModelName.value = targetModel;
     responseStyle.value = targetStyle;
+    contextMode.value = result.contextMode;
+    manualContextLength.value = result.manualContextLength;
+    serverMemoryLimitGb.value = result.serverMemoryLimitGb;
 
     final conv = currentConversation;
     if (conv != null) {
       conv.modelName = targetModel;
       conv.responseStyle = targetStyle;
+    }
+
+    final initialModelInfo =
+        availableModels.value.where((m) => m.name == targetModel).firstOrNull;
+    if (result.isOllamaConnected &&
+        targetModel.isNotEmpty &&
+        (initialModelInfo == null ||
+            initialModelInfo.maxContextLength <=
+                ContextSettings.fallbackMaxContext)) {
+      await _fetchAndApplyModelMaxContext(targetModel, force: modelChanged);
     }
 
     final modelInfo =
@@ -338,8 +479,10 @@ class ChatController {
       } else if (modelChanged) {
         await loadModel(targetModel);
       }
-    } else if (modelInfo != null && modelInfo.isLoaded) {
-      isModelLoaded.value = true;
+    } else if (modelInfo != null) {
+      if (modelInfo.isLoaded) {
+        isModelLoaded.value = true;
+      }
       _updateMetricsFromModel(modelInfo);
     }
 
@@ -512,6 +655,48 @@ class ChatController {
     _syncMessagesToCurrentConversation();
 
     final promptToSend = responseStyle.value.applyToPrompt(effectiveText);
+    final historyToSend =
+        chatHistory.value.sublist(0, chatHistory.value.length - 2);
+
+    var activeModel = availableModels.value
+        .where((m) => m.name == currentModel)
+        .firstOrNull;
+    if (!_queriedMaxContextModels.contains(currentModel) &&
+        (activeModel == null ||
+            activeModel.maxContextLength <=
+                ContextSettings.fallbackMaxContext)) {
+      await _fetchAndApplyModelMaxContext(currentModel);
+      activeModel = availableModels.value
+          .where((m) => m.name == currentModel)
+          .firstOrNull;
+    }
+
+    final estimatedTokens = OllamaContextCalculator.estimateConversationTokens(
+      history: historyToSend,
+      newUserText: promptToSend,
+      newAttachment: attachment,
+      lastPromptTokens: conv?.lastPromptTokens ?? 0,
+      lastEvalTokens: conv?.lastEvalTokens ?? 0,
+    );
+
+    final activeNumCtx = _resolveActiveNumCtxForState(
+      model: activeModel,
+      currentStepNumCtx:
+          conv?.activeNumCtx ?? currentMetrics.value.contextLimit,
+      estimatedTokens: estimatedTokens,
+    );
+
+    final modelMaxContext = activeModel != null
+        ? math.max(activeModel.maxContextLength, activeModel.contextLength)
+        : currentMetrics.value.maxContextLength;
+
+    currentMetrics.value = currentMetrics.value.copyWith(
+      contextLimit: activeNumCtx,
+      maxContextLength: modelMaxContext,
+    );
+    if (conv != null) {
+      conv.activeNumCtx = activeNumCtx;
+    }
 
     try {
       final stream = _repository.sendMessage(
@@ -520,8 +705,9 @@ class ChatController {
         imageBytes:
             attachment?.type == AttachmentType.image ? attachment?.bytes : null,
         modelName: currentModel,
-        history: chatHistory.value.sublist(0, chatHistory.value.length - 2),
+        history: historyToSend,
         responseStyle: responseStyle.value,
+        numCtx: activeNumCtx,
         onMetrics: (pTokens, eTokens) {
           currentMetrics.value = currentMetrics.value.copyWith(
             promptTokens: pTokens,

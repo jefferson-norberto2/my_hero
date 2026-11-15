@@ -14,6 +14,7 @@ class OllamaModel {
   final int sizeVram;
   final MemoryAllocation memoryAllocation;
   final int contextLength;
+  final int maxContextLength;
 
   const OllamaModel({
     required this.name,
@@ -27,6 +28,7 @@ class OllamaModel {
     this.sizeVram = 0,
     this.memoryAllocation = const MemoryAllocation.empty(),
     this.contextLength = 4096,
+    this.maxContextLength = 4096,
   });
 
   String get sizeFormatted {
@@ -48,9 +50,12 @@ class OllamaModel {
     int sizeVram = 0,
     MemoryAllocation memoryAllocation = const MemoryAllocation.empty(),
     int? contextLength,
+    int? maxContextLength,
   }) {
     final details = json['details'] as Map<String, dynamic>? ?? {};
     final defaultCtx = (details['context_length'] as num?)?.toInt() ?? 4096;
+    final resolvedCtx = contextLength ?? defaultCtx;
+    final resolvedMax = maxContextLength ?? resolvedCtx;
 
     return OllamaModel(
       name: json['name'] as String? ?? '',
@@ -63,7 +68,8 @@ class OllamaModel {
       isLoaded: isLoaded,
       sizeVram: sizeVram,
       memoryAllocation: memoryAllocation,
-      contextLength: contextLength ?? defaultCtx,
+      contextLength: resolvedCtx,
+      maxContextLength: resolvedMax,
     );
   }
 
@@ -79,6 +85,7 @@ class OllamaModel {
     int? sizeVram,
     MemoryAllocation? memoryAllocation,
     int? contextLength,
+    int? maxContextLength,
   }) {
     return OllamaModel(
       name: name ?? this.name,
@@ -92,6 +99,7 @@ class OllamaModel {
       sizeVram: sizeVram ?? this.sizeVram,
       memoryAllocation: memoryAllocation ?? this.memoryAllocation,
       contextLength: contextLength ?? this.contextLength,
+      maxContextLength: maxContextLength ?? this.maxContextLength,
     );
   }
 }

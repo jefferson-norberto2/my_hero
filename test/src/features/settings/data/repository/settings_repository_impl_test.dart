@@ -3,6 +3,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository_impl.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 class MockOllamaRemoteDatasource extends Mock
@@ -98,6 +99,38 @@ void main() {
         throwsA(isA<StateError>()),
       );
       verifyNever(() => mockOllamaDatasource.preloadModel(any()));
+    });
+
+    test('context and memory settings delegate cleanly to datasources', () async {
+      when(() => mockSettingsDatasource.getContextMode())
+          .thenAnswer((_) async => ContextMode.manual);
+      when(() => mockSettingsDatasource.saveContextMode(ContextMode.automatic))
+          .thenAnswer((_) async {});
+      when(() => mockSettingsDatasource.getManualContextLength())
+          .thenAnswer((_) async => 16384);
+      when(() => mockSettingsDatasource.saveManualContextLength(32768))
+          .thenAnswer((_) async {});
+      when(() => mockSettingsDatasource.getServerMemoryLimitGb())
+          .thenAnswer((_) async => 32.0);
+      when(() => mockSettingsDatasource.saveServerMemoryLimitGb(64.0))
+          .thenAnswer((_) async {});
+      when(() => mockOllamaDatasource.getModelMaxContextLength('qwen2.5:7b'))
+          .thenAnswer((_) async => 32768);
+
+      expect(await repository.loadContextMode(), ContextMode.manual);
+      await repository.saveContextMode(ContextMode.automatic);
+      expect(await repository.loadManualContextLength(), 16384);
+      await repository.saveManualContextLength(32768);
+      expect(await repository.loadServerMemoryLimitGb(), 32.0);
+      await repository.saveServerMemoryLimitGb(64.0);
+      expect(await repository.getModelMaxContextLength('qwen2.5:7b'), 32768);
+
+      verify(() => mockSettingsDatasource.saveContextMode(ContextMode.automatic))
+          .called(1);
+      verify(() => mockSettingsDatasource.saveManualContextLength(32768))
+          .called(1);
+      verify(() => mockSettingsDatasource.saveServerMemoryLimitGb(64.0))
+          .called(1);
     });
   });
 }

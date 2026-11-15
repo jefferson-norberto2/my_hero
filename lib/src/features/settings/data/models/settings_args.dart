@@ -1,3 +1,4 @@
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -9,6 +10,9 @@ class SettingsArgs {
   final List<OllamaModel> availableModels;
   final bool isOllamaConnected;
   final bool isModelLoaded;
+  final ContextMode contextMode;
+  final int manualContextLength;
+  final double? serverMemoryLimitGb;
 
   const SettingsArgs({
     this.selectedModelName = '',
@@ -17,6 +21,9 @@ class SettingsArgs {
     this.availableModels = const [],
     this.isOllamaConnected = true,
     this.isModelLoaded = false,
+    this.contextMode = ContextMode.automatic,
+    this.manualContextLength = ContextSettings.fallbackMaxContext,
+    this.serverMemoryLimitGb,
   });
 }
 
@@ -28,6 +35,9 @@ class SettingsResult {
   final List<OllamaModel> availableModels;
   final bool isOllamaConnected;
   final bool isModelLoaded;
+  final ContextMode contextMode;
+  final int manualContextLength;
+  final double? serverMemoryLimitGb;
 
   const SettingsResult({
     required this.selectedModelName,
@@ -36,5 +46,8 @@ class SettingsResult {
     required this.availableModels,
     required this.isOllamaConnected,
     required this.isModelLoaded,
+    this.contextMode = ContextMode.automatic,
+    this.manualContextLength = ContextSettings.fallbackMaxContext,
+    this.serverMemoryLimitGb,
   });
 }

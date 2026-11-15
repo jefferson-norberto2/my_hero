@@ -79,5 +79,21 @@ void main() {
       expect(find.text('CPU'), findsNothing);
       expect(find.text('GPU/CPU'), findsNothing);
     });
+
+    testWidgets('displays active Ctx percentage and active/max context tooltip', (tester) async {
+      const metrics = ChatMetrics(
+        promptTokens: 2048,
+        contextLimit: 8192,
+        maxContextLength: 32768,
+      );
+
+      await tester.pumpWidget(buildSubject(metrics));
+
+      expect(find.text('Ctx: 25% (restam 75%)'), findsOneWidget);
+      expect(
+        find.byTooltip('Contexto ativo: 8.192 / Máx. do modelo: 32.768 tokens'),
+        findsOneWidget,
+      );
+    });
   });
 }

@@ -10,6 +10,7 @@ class Conversation {
   ResponseStyle responseStyle;
   int lastPromptTokens;
   int lastEvalTokens;
+  int activeNumCtx;
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -21,6 +22,7 @@ class Conversation {
     this.responseStyle = ResponseStyle.simple,
     this.lastPromptTokens = 0,
     this.lastEvalTokens = 0,
+    this.activeNumCtx = 4096,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -38,6 +40,7 @@ class Conversation {
     ResponseStyle? responseStyle,
     int? lastPromptTokens,
     int? lastEvalTokens,
+    int? activeNumCtx,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -49,6 +52,7 @@ class Conversation {
       responseStyle: responseStyle ?? this.responseStyle,
       lastPromptTokens: lastPromptTokens ?? this.lastPromptTokens,
       lastEvalTokens: lastEvalTokens ?? this.lastEvalTokens,
+      activeNumCtx: activeNumCtx ?? this.activeNumCtx,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -64,6 +68,7 @@ class Conversation {
       'responseStyle': responseStyle.name,
       'lastPromptTokens': lastPromptTokens,
       'lastEvalTokens': lastEvalTokens,
+      'activeNumCtx': activeNumCtx,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -88,6 +93,7 @@ class Conversation {
           ResponseStyle.fromString(json['responseStyle'] as String?),
       lastPromptTokens: (json['lastPromptTokens'] as num?)?.toInt() ?? 0,
       lastEvalTokens: (json['lastEvalTokens'] as num?)?.toInt() ?? 0,
+      activeNumCtx: (json['activeNumCtx'] as num?)?.toInt() ?? 4096,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),

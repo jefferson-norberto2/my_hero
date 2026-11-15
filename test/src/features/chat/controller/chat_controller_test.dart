@@ -8,6 +8,7 @@ import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
@@ -142,6 +143,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer(
@@ -166,6 +168,7 @@ void main() {
           modelName: 'llama3.2:3b',
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).called(1);
@@ -190,6 +193,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer(
@@ -316,7 +320,8 @@ void main() {
       expect(controller.responseStyle.value, ResponseStyle.brief);
       expect(controller.isModelLoaded.value, isTrue);
       expect(controller.currentMetrics.value.vramFormatted, '3.8 GB');
-      expect(controller.currentMetrics.value.contextLimit, 8192);
+      expect(controller.currentMetrics.value.contextLimit, 4096);
+      expect(controller.currentMetrics.value.maxContextLength, 8192);
       expect(controller.currentConversation?.modelName, 'mimo-v2.6:9b');
       expect(controller.currentConversation?.responseStyle, ResponseStyle.brief);
 
@@ -377,6 +382,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer((_) => streamController.stream);
@@ -417,6 +423,7 @@ void main() {
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
           responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer((_) => streamController.stream);
@@ -501,6 +508,136 @@ void main() {
         controller.currentMetrics.value.hardwareTooltip,
         'VRAM: 3.0 GB | RAM: 2.4 GB',
       );
+    });
+  });
+
+  group('ChatController - Dynamic Stepped Context Scaling', () {
+    test('sendMessage steps up numCtx when exceeding 80% of current step and updates metrics', () async {
+      await controller.createNewConversation();
+      controller.isModelLoaded.value = true;
+
+      const model32k = OllamaModel(
+        name: 'qwen2.5:7b',
+        model: 'qwen2.5:7b',
+        size: 4000000000,
+        isLoaded: true,
+        sizeVram: 4000000000,
+        maxContextLength: 32768,
+      );
+
+      await controller.applySettings(
+        const SettingsResult(
+          selectedModelName: 'qwen2.5:7b',
+          responseStyle: ResponseStyle.simple,
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [model32k],
+          isOllamaConnected: true,
+          isModelLoaded: true,
+          contextMode: ContextMode.automatic,
+        ),
+      );
+
+      final capturedNumCtx = <int?>[];
+      var callCount = 0;
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((invocation) {
+        capturedNumCtx.add(invocation.namedArguments[#numCtx] as int?);
+        final onMetrics =
+            invocation.namedArguments[#onMetrics] as void Function(int, int)?;
+        callCount++;
+        if (callCount == 1) {
+          onMetrics?.call(3400, 100);
+        } else {
+          onMetrics?.call(3600, 120);
+        }
+        return Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Resposta', isDone: true),
+        ]);
+      });
+
+      await controller.sendMessage('Primeira pergunta');
+      expect(capturedNumCtx, [4096]);
+      expect(controller.currentMetrics.value.contextLimit, 4096);
+      expect(controller.currentMetrics.value.maxContextLength, 32768);
+
+      // Turn 2 sees 3400 + 100 + prompt tokens >= 80% of 4096 (3276.8) -> scales to 8192.
+      await controller.sendMessage('Segunda pergunta');
+      expect(capturedNumCtx, [4096, 8192]);
+      expect(controller.currentMetrics.value.contextLimit, 8192);
+      expect(controller.currentConversation?.activeNumCtx, 8192);
+      expect(
+        controller.currentMetrics.value.contextTooltip,
+        'Contexto ativo: 8.192 / Máx. do modelo: 32.768 tokens',
+      );
+    });
+
+    test('sendMessage respects CPU hardware ceiling and manual mode cap', () async {
+      await controller.createNewConversation();
+      controller.isModelLoaded.value = true;
+
+      final heavyCpuModel = OllamaModel(
+        name: 'llama3.1:8b',
+        model: 'llama3.1:8b',
+        size: 6500000000,
+        isLoaded: true,
+        maxContextLength: 65536,
+        memoryAllocation: OllamaMemoryParser.fromBytes(
+          sizeBytes: 6979321856, // 6.5 GB on CPU
+          vramBytes: 0,
+        ),
+      );
+
+      // 8 GB server limit with 6.5 GB model -> 1.5 GB free * 0.50 CPU margin -> 4096 ceiling.
+      await controller.applySettings(
+        SettingsResult(
+          selectedModelName: 'llama3.1:8b',
+          responseStyle: ResponseStyle.simple,
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [heavyCpuModel],
+          isOllamaConnected: true,
+          isModelLoaded: true,
+          contextMode: ContextMode.automatic,
+          serverMemoryLimitGb: 8.0,
+        ),
+      );
+
+      final capturedNumCtx = <int?>[];
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((invocation) {
+        capturedNumCtx.add(invocation.namedArguments[#numCtx] as int?);
+        final onMetrics =
+            invocation.namedArguments[#onMetrics] as void Function(int, int)?;
+        onMetrics?.call(3800, 150);
+        return Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Ok', isDone: true),
+        ]);
+      });
+
+      await controller.sendMessage('Turno 1');
+      await controller.sendMessage('Turno 2 acima de 80%');
+
+      expect(capturedNumCtx, [4096, 4096]);
     });
   });
 }

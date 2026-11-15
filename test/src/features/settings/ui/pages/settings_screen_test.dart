@@ -7,6 +7,7 @@ import 'package:my_hero/src/features/settings/controller/settings_controller.dar
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -15,6 +16,10 @@ class MockSettingsRepository extends Mock implements SettingsRepository {}
 void main() {
   late MockSettingsRepository mockRepository;
   late SettingsController controller;
+
+  setUpAll(() {
+    registerFallbackValue(ContextMode.automatic);
+  });
 
   const modelUnloaded = OllamaModel(
     name: 'mimo-v2.6:9b',
@@ -173,13 +178,13 @@ void main() {
       await tester.tap(find.text('Alterar IP'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byKey(const Key('server_host_field')), findsOneWidget);
       expect(find.text('Localhost (padrão)'), findsOneWidget);
       expect(find.text('Testar Conexão'), findsOneWidget);
       expect(find.text('Aplicar IP'), findsOneWidget);
 
-      await tester.ensureVisible(find.byType(TextField));
-      await tester.enterText(find.byType(TextField), '10.0.0.15');
+      await tester.ensureVisible(find.byKey(const Key('server_host_field')));
+      await tester.enterText(find.byKey(const Key('server_host_field')), '10.0.0.15');
       await tester.pump();
 
       await tester.ensureVisible(find.text('Testar Conexão'));
@@ -295,6 +300,68 @@ void main() {
       expect(capturedResult!.responseStyle, ResponseStyle.brief);
       expect(capturedResult!.selectedModelName, 'mimo-v2.6:9b');
       expect(find.text('Open'), findsOneWidget);
+    });
+
+    testWidgets('context section caps manual presets to model max and saves memory limit', (tester) async {
+      SettingsResult? capturedResult;
+      const modelWith16k = OllamaModel(
+        name: 'qwen2.5:7b',
+        model: 'qwen2.5:7b',
+        size: 5000000000,
+        isLoaded: true,
+        sizeVram: 4500000000,
+        maxContextLength: 16384,
+      );
+
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await tester.pumpWidget(
+        buildRoutedTestApp(
+          args: const SettingsArgs(
+            selectedModelName: 'qwen2.5:7b',
+            responseStyle: ResponseStyle.simple,
+            ollamaBaseUrl: 'http://localhost:11434',
+            availableModels: [modelWith16k],
+            isModelLoaded: true,
+          ),
+          onPopped: (res) => capturedResult = res,
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Manual'));
+      await tester.tap(find.text('Manual'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('4096'), findsOneWidget);
+      expect(find.text('8192'), findsOneWidget);
+      expect(find.text('16384'), findsOneWidget);
+      expect(find.text('32768'), findsNothing);
+      expect(find.text('65536'), findsNothing);
+      expect(find.text('131072'), findsNothing);
+
+      await tester.ensureVisible(find.text('16384'));
+      await tester.tap(find.text('16384'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('32 GB'));
+      await tester.tap(find.text('32 GB'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Salvar'));
+      await tester.tap(find.text('Salvar'));
+      await tester.pumpAndSettle();
+
+      expect(capturedResult, isNotNull);
+      expect(capturedResult!.contextMode, ContextMode.manual);
+      expect(capturedResult!.manualContextLength, 16384);
+      expect(capturedResult!.serverMemoryLimitGb, 32.0);
     });
   });
 }

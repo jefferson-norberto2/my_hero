@@ -1,6 +1,7 @@
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 /// Default [SettingsRepository] implementation delegating to remote and local datasources.
@@ -36,6 +37,36 @@ class SettingsRepositoryImpl implements SettingsRepository {
   }
 
   @override
+  Future<ContextMode> loadContextMode() {
+    return _settingsDatasource.getContextMode();
+  }
+
+  @override
+  Future<void> saveContextMode(ContextMode mode) {
+    return _settingsDatasource.saveContextMode(mode);
+  }
+
+  @override
+  Future<int> loadManualContextLength() {
+    return _settingsDatasource.getManualContextLength();
+  }
+
+  @override
+  Future<void> saveManualContextLength(int length) {
+    return _settingsDatasource.saveManualContextLength(length);
+  }
+
+  @override
+  Future<double?> loadServerMemoryLimitGb() {
+    return _settingsDatasource.getServerMemoryLimitGb();
+  }
+
+  @override
+  Future<void> saveServerMemoryLimitGb(double? limitGb) {
+    return _settingsDatasource.saveServerMemoryLimitGb(limitGb);
+  }
+
+  @override
   Future<bool> checkOllamaHealth([String? customUrl]) {
     return _ollamaDatasource.checkHealth(customUrl);
   }
@@ -43,6 +74,11 @@ class SettingsRepositoryImpl implements SettingsRepository {
   @override
   Future<List<OllamaModel>> getAvailableModels() {
     return _ollamaDatasource.getAvailableModels();
+  }
+
+  @override
+  Future<int> getModelMaxContextLength(String modelName) {
+    return _ollamaDatasource.getModelMaxContextLength(modelName);
   }
 
   @override

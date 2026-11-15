@@ -403,5 +403,91 @@ void main() {
         ],
       );
     });
+
+    test('getModelMaxContextLength sends POST /api/show with model name and parses .context_length', () async {
+      when(
+        () => mockDio.post(
+          any(that: contains('/api/show')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 200,
+          data: {
+            'model_info': {
+              'general.architecture': 'qwen2',
+              'qwen2.context_length': 32768,
+            },
+          },
+        ),
+      );
+
+      final maxCtx = await datasource.getModelMaxContextLength('qwen2.5:7b');
+      expect(maxCtx, 32768);
+
+      verify(
+        () => mockDio.post(
+          any(that: contains('/api/show')),
+          data: {'name': 'qwen2.5:7b'},
+          options: any(named: 'options'),
+        ),
+      ).called(1);
+    });
+
+    test('getModelMaxContextLength falls back to 4096 on error or missing key', () async {
+      when(
+        () => mockDio.post(
+          any(that: contains('/api/show')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+        ),
+      ).thenThrow(DioException(requestOptions: RequestOptions(path: '')));
+
+      final maxCtx = await datasource.getModelMaxContextLength('llama3.2:3b');
+      expect(maxCtx, 4096);
+    });
+
+    test('generateChatResponseAsync includes options.num_ctx in /api/chat payload when provided', () async {
+      final byteStream = Stream.fromIterable([
+        Uint8List.fromList(utf8.encode('{"message": {"role": "assistant", "content": "Ok"}, "done": true}\n')),
+      ]);
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/chat')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<ResponseBody>(
+          data: ResponseBody(byteStream, 200),
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 200,
+        ),
+      );
+
+      await datasource.generateChatResponseAsync(
+        modelName: 'llama3.2:3b',
+        messages: const [
+          {'role': 'user', 'content': 'Oi'},
+        ],
+        numCtx: 16384,
+      ).toList();
+
+      final captured = verify(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/chat')),
+          data: captureAny(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).captured;
+
+      final payload = captured.single as Map<String, dynamic>;
+      expect(payload['options'], {'num_ctx': 16384});
+    });
   });
 }

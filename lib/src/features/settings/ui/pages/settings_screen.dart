@@ -4,12 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:my_hero/src/core/routes/app_routes.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/features/settings/ui/widgets/context_window_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_model_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_server_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/response_style_section.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
-/// Full-page settings screen centralizing model, response style, and server controls.
+/// Full-page settings screen centralizing model, response style, context window, and server controls.
 class SettingsScreen extends StatefulWidget {
   final SettingsArgs? initialArgs;
   final SettingsController? controller;
@@ -27,24 +28,38 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsController _controller;
   late final TextEditingController _hostController;
+  late final TextEditingController _memoryLimitController;
   bool _isSaving = false;
+
+  String _formatMemoryText(double? gb) {
+    if (gb == null || gb <= 0) return '';
+    return gb == gb.roundToDouble()
+        ? gb.toStringAsFixed(0)
+        : gb.toStringAsFixed(1);
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = widget.controller ?? GetIt.I<SettingsController>();
     _hostController = TextEditingController();
+    _memoryLimitController = TextEditingController();
     _controller.init(widget.initialArgs).then((_) {
       if (mounted) {
         _hostController.text = _controller.ollamaBaseUrl.value;
+        _memoryLimitController.text =
+            _formatMemoryText(_controller.serverMemoryLimitGb.value);
       }
     });
     _hostController.text = _controller.ollamaBaseUrl.value;
+    _memoryLimitController.text =
+        _formatMemoryText(_controller.serverMemoryLimitGb.value);
   }
 
   @override
   void dispose() {
     _hostController.dispose();
+    _memoryLimitController.dispose();
     super.dispose();
   }
 
@@ -74,6 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final result = await _controller.saveSettings(
         pendingHostInput: _hostController.text,
+        pendingMemoryLimitInput: _memoryLimitController.text,
       );
       _navigateBack(result);
     } finally {
@@ -140,6 +156,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final loadError = _controller.loadErrorMessage.value;
                         final isModelLoaded = _controller.isModelLoaded.value;
                         final selectedStyle = _controller.responseStyle.value;
+                        final selectedContextMode =
+                            _controller.contextMode.value;
+                        final manualContextLength =
+                            _controller.manualContextLength.value;
+                        final serverMemoryLimitGb =
+                            _controller.serverMemoryLimitGb.value;
+                        final maxModelContext =
+                            _controller.activeModelMaxContext;
                         final isEditingServer =
                             _controller.isEditingServer.value;
                         final isTesting =
@@ -174,6 +198,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onStyleChanged: _controller.selectResponseStyle,
                             ),
                             const SizedBox(height: 12),
+                            ContextWindowSection(
+                              selectedMode: selectedContextMode,
+                              manualContextLength: manualContextLength,
+                              maxModelContext: maxModelContext,
+                              serverMemoryLimitGb: serverMemoryLimitGb,
+                              onModeChanged: _controller.selectContextMode,
+                              onManualPresetSelected:
+                                  _controller.selectManualContextLength,
+                            ),
+                            const SizedBox(height: 12),
                             OllamaServerSection(
                               serverUrl: serverUrl,
                               isConnected: isConnected,
@@ -183,6 +217,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               testSuccess: testSuccess,
                               testMessage: testMessage,
                               hostController: _hostController,
+                              memoryLimitController: _memoryLimitController,
+                              onMemoryLimitChanged:
+                                  _controller.setServerMemoryLimitFromInput,
                               onToggleEditor: () {
                                 if (!isEditingServer) {
                                   _hostController.text = serverUrl;

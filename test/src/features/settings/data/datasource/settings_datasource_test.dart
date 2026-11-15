@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -55,6 +56,23 @@ void main() {
 
       final result = await datasource.getOllamaBaseUrl();
       expect(result, equals(AppConstants.ollamaBaseUrl));
+    });
+
+    test('contextMode, manualContextLength, and serverMemoryLimitGb persist and clear properly', () async {
+      expect(await datasource.getContextMode(), ContextMode.automatic);
+      expect(await datasource.getManualContextLength(), 4096);
+      expect(await datasource.getServerMemoryLimitGb(), isNull);
+
+      await datasource.saveContextMode(ContextMode.manual);
+      await datasource.saveManualContextLength(16384);
+      await datasource.saveServerMemoryLimitGb(32.0);
+
+      expect(await datasource.getContextMode(), ContextMode.manual);
+      expect(await datasource.getManualContextLength(), 16384);
+      expect(await datasource.getServerMemoryLimitGb(), 32.0);
+
+      await datasource.saveServerMemoryLimitGb(null);
+      expect(await datasource.getServerMemoryLimitGb(), isNull);
     });
   });
 }

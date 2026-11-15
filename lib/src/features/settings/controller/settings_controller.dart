@@ -1,7 +1,9 @@
+import 'dart:math' as math;
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/utils/url_utils.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:signals_flutter/signals_flutter.dart';
@@ -18,6 +20,10 @@ class SettingsController {
   final availableModels = signal<List<OllamaModel>>([]);
   final selectedModelName = signal<String>('');
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
+  final contextMode = signal<ContextMode>(ContextMode.automatic);
+  final manualContextLength =
+      signal<int>(ContextSettings.fallbackMaxContext);
+  final serverMemoryLimitGb = signal<double?>(null);
   final isOllamaConnected = signal<bool>(true);
   final isModelLoaded = signal<bool>(false);
 
@@ -35,6 +41,25 @@ class SettingsController {
 
   String _initialServerUrl = AppConstants.ollamaBaseUrl;
 
+  /// Native maximum context supported by the currently selected model.
+  int get activeModelMaxContext {
+    final match = availableModels.value
+        .where((m) => m.name == selectedModelName.value)
+        .firstOrNull;
+    if (match == null) return ContextSettings.fallbackMaxContext;
+    return math.max(match.maxContextLength, match.contextLength);
+  }
+
+  /// Parses optional memory input in GB into a validated positive double.
+  static double? parseMemoryLimitGb(String? raw) {
+    if (raw == null) return null;
+    final normalized = raw.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    final parsed = double.tryParse(normalized);
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
+  }
+
   /// Initializes the controller with optional route arguments or loads from storage.
   Future<void> init([SettingsArgs? args]) async {
     if (args != null) {
@@ -49,11 +74,21 @@ class SettingsController {
         selectedModelName.value = availableModels.value.first.name;
       }
       responseStyle.value = args.responseStyle;
+      contextMode.value = args.contextMode;
+      manualContextLength.value = args.manualContextLength;
+      serverMemoryLimitGb.value = args.serverMemoryLimitGb;
       isOllamaConnected.value = args.isOllamaConnected;
       isModelLoaded.value = args.isModelLoaded ||
           availableModels.value.any(
             (m) => m.name == selectedModelName.value && m.isLoaded,
           );
+      if (isOllamaConnected.value &&
+          selectedModelName.value.isNotEmpty &&
+          activeModelMaxContext <= ContextSettings.fallbackMaxContext) {
+        await _fetchActiveModelMaxContext(selectedModelName.value);
+      } else {
+        _clampManualContextLength();
+      }
       return;
     }
 
@@ -62,28 +97,78 @@ class SettingsController {
     await loadInitialData();
   }
 
-  /// Loads the persisted server URL and fetches available models.
+  /// Loads persisted settings and fetches available models.
   Future<void> loadInitialData() async {
     try {
       final savedUrl = await _repository.loadOllamaBaseUrl();
       _initialServerUrl = savedUrl;
       ollamaBaseUrl.value = savedUrl;
+      contextMode.value = await _repository.loadContextMode();
+      manualContextLength.value = await _repository.loadManualContextLength();
+      serverMemoryLimitGb.value =
+          await _repository.loadServerMemoryLimitGb();
     } catch (_) {
-      // Keep default server URL if loading from disk fails.
+      // Keep defaults if persisted configuration cannot be read.
     }
     await refreshModels();
   }
 
-  void selectModel(String modelName) {
+  Future<void> selectModel(String modelName) async {
     selectedModelName.value = modelName;
     loadErrorMessage.value = null;
     isModelLoaded.value = availableModels.value.any(
       (m) => m.name == modelName && m.isLoaded,
     );
+    if (isOllamaConnected.value && modelName.isNotEmpty) {
+      await _fetchActiveModelMaxContext(modelName);
+    } else {
+      _clampManualContextLength();
+    }
   }
 
   void selectResponseStyle(ResponseStyle style) {
     responseStyle.value = style;
+  }
+
+  void selectContextMode(ContextMode mode) {
+    contextMode.value = mode;
+    _clampManualContextLength();
+  }
+
+  void selectManualContextLength(int length) {
+    manualContextLength.value = length;
+    _clampManualContextLength();
+  }
+
+  void setServerMemoryLimitFromInput(String raw) {
+    serverMemoryLimitGb.value = parseMemoryLimitGb(raw);
+  }
+
+  void _clampManualContextLength() {
+    final allowed =
+        ContextSettings.availablePresetsForModel(activeModelMaxContext);
+    if (allowed.contains(manualContextLength.value)) return;
+    final highestAllowed =
+        allowed.where((p) => p <= manualContextLength.value).lastOrNull;
+    manualContextLength.value = highestAllowed ?? allowed.last;
+  }
+
+  Future<void> _fetchActiveModelMaxContext(String modelName) async {
+    try {
+      final fetchedMax = await _repository.getModelMaxContextLength(modelName);
+      if (fetchedMax <= 0) return;
+
+      availableModels.value = availableModels.value.map((m) {
+        if (m.name == modelName) {
+          return m.copyWith(maxContextLength: fetchedMax);
+        }
+        return m;
+      }).toList();
+    } catch (_) {
+      // Preserve existing fallback capacity when /api/show is unavailable.
+    } finally {
+      _clampManualContextLength();
+    }
   }
 
   Future<void> refreshModels() async {
@@ -116,6 +201,9 @@ class SettingsController {
         isModelLoaded.value = models.any(
           (m) => m.name == selectedModelName.value && m.isLoaded,
         );
+        if (selectedModelName.value.isNotEmpty) {
+          await _fetchActiveModelMaxContext(selectedModelName.value);
+        }
       } else {
         selectedModelName.value = '';
         isModelLoaded.value = false;
@@ -154,6 +242,7 @@ class SettingsController {
 
       selectedModelName.value = target;
       await refreshModels();
+      await _fetchActiveModelMaxContext(target);
       isModelLoaded.value = true;
 
       // Ensure the loaded flag is reflected even if /api/ps has not updated yet.
@@ -241,8 +330,11 @@ class SettingsController {
     }
   }
 
-  /// Persists the server URL if changed and builds the result to return to chat.
-  Future<SettingsResult> saveSettings({String? pendingHostInput}) async {
+  /// Persists settings changes and builds the result to return to chat.
+  Future<SettingsResult> saveSettings({
+    String? pendingHostInput,
+    String? pendingMemoryLimitInput,
+  }) async {
     if (isEditingServer.value &&
         pendingHostInput != null &&
         pendingHostInput.trim().isNotEmpty) {
@@ -252,9 +344,21 @@ class SettingsController {
       }
     }
 
+    if (pendingMemoryLimitInput != null) {
+      serverMemoryLimitGb.value = parseMemoryLimitGb(pendingMemoryLimitInput);
+    }
+
     if (ollamaBaseUrl.value != _initialServerUrl) {
       await _repository.saveOllamaBaseUrl(ollamaBaseUrl.value);
       _initialServerUrl = ollamaBaseUrl.value;
+    }
+
+    try {
+      await _repository.saveContextMode(contextMode.value);
+      await _repository.saveManualContextLength(manualContextLength.value);
+      await _repository.saveServerMemoryLimitGb(serverMemoryLimitGb.value);
+    } catch (_) {
+      // Ignore storage persistence errors on save.
     }
 
     return SettingsResult(
@@ -264,6 +368,9 @@ class SettingsController {
       availableModels: List<OllamaModel>.from(availableModels.value),
       isOllamaConnected: isOllamaConnected.value,
       isModelLoaded: isModelLoaded.value,
+      contextMode: contextMode.value,
+      manualContextLength: manualContextLength.value,
+      serverMemoryLimitGb: serverMemoryLimitGb.value,
     );
   }
 }

@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_context_calculator.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_thinking_parser.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 /// Remote datasource communicating with the Ollama HTTP API.
@@ -16,10 +18,12 @@ abstract class OllamaRemoteDatasource {
   Future<List<OllamaModel>> getAvailableModels();
   Future<List<String>> getLoadedModelNames();
   Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
+  Future<int> getModelMaxContextLength(String modelName);
   Future<void> preloadModel(String modelName);
   Stream<ChatStreamChunk> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
+    int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   });
   void stopGeneration();
@@ -151,6 +155,32 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   }
 
   @override
+  Future<int> getModelMaxContextLength(String modelName) async {
+    if (modelName.trim().isEmpty) {
+      return ContextSettings.fallbackMaxContext;
+    }
+
+    try {
+      final response = await _dioClient.dio.post(
+        '$_baseUrl/api/show',
+        data: {'name': modelName},
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return OllamaContextCalculator.parseMaxContextFromShowResponse(
+          response.data as Map<String, dynamic>,
+        );
+      }
+      return ContextSettings.fallbackMaxContext;
+    } catch (_) {
+      return ContextSettings.fallbackMaxContext;
+    }
+  }
+
+  @override
   Future<void> preloadModel(String modelName) async {
     // Sending an empty generate request instructs Ollama to load model weights into memory/VRAM.
     await _dioClient.dio.post(
@@ -168,6 +198,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   Stream<ChatStreamChunk> generateChatResponseAsync({
     required String modelName,
     required List<Map<String, dynamic>> messages,
+    int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   }) async* {
     _currentCancelToken?.cancel();
@@ -180,6 +211,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
         'model': modelName,
         'messages': messages,
         'stream': true,
+        if (numCtx != null && numCtx > 0) 'options': {'num_ctx': numCtx},
       },
       options: Options(
         responseType: ResponseType.stream,

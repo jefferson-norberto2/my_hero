@@ -3,6 +3,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -11,6 +12,10 @@ class MockSettingsRepository extends Mock implements SettingsRepository {}
 void main() {
   late MockSettingsRepository mockRepository;
   late SettingsController controller;
+
+  setUpAll(() {
+    registerFallbackValue(ContextMode.automatic);
+  });
 
   const modelA = OllamaModel(
     name: 'mimo-v2.6:9b',
@@ -153,6 +158,66 @@ void main() {
       expect(result.isModelLoaded, isTrue);
       verify(() => mockRepository.saveOllamaBaseUrl('http://192.168.1.244:11434'))
           .called(1);
+    });
+
+    test('selectModel queries /api/show and clamps manual context length to model capacity', () async {
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 8192);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await controller.init(
+        SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [
+            modelA.copyWith(maxContextLength: 65536),
+            modelB,
+          ],
+          contextMode: ContextMode.manual,
+          manualContextLength: 32768,
+        ),
+      );
+
+      await controller.selectModel('llama3.2:3b');
+
+      expect(controller.activeModelMaxContext, 8192);
+      expect(controller.manualContextLength.value, 8192);
+      verify(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .called(1);
+    });
+
+    test('saveSettings persists context mode, manual preset, and optional server memory limit', () async {
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await controller.init(
+        SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [modelA.copyWith(maxContextLength: 32768)],
+        ),
+      );
+
+      controller.selectContextMode(ContextMode.manual);
+      controller.selectManualContextLength(16384);
+
+      final result = await controller.saveSettings(
+        pendingMemoryLimitInput: '32',
+      );
+
+      expect(result.contextMode, ContextMode.manual);
+      expect(result.manualContextLength, 16384);
+      expect(result.serverMemoryLimitGb, 32.0);
+      verify(() => mockRepository.saveContextMode(ContextMode.manual)).called(1);
+      verify(() => mockRepository.saveManualContextLength(16384)).called(1);
+      verify(() => mockRepository.saveServerMemoryLimitGb(32.0)).called(1);
     });
   });
 }

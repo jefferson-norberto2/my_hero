@@ -10,6 +10,7 @@ import 'package:my_hero/src/features/chat/ui/widgets/chat_message_list.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_metrics_badge.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
 /// Main chat page displaying conversation messages, input bar, and status metrics.
@@ -205,7 +206,7 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '• Tokens utilizados: ${metrics.totalTokens} / ${metrics.contextLimit}',
+                      '• Tokens utilizados: ${metrics.totalTokens} / ${ContextSettings.formatTokenCount(metrics.contextLimit)}',
                       style: const TextStyle(fontSize: 12),
                     ),
                     Text(
@@ -214,6 +215,13 @@ class _ChatPageState extends State<ChatPage> {
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: progressColor,
+                      ),
+                    ),
+                    Text(
+                      '• Máximo do modelo: ${ContextSettings.formatTokenCount(metrics.maxContextLength)} tokens',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.outline,
                       ),
                     ),
                     if (metrics.promptTokens > 0) ...[

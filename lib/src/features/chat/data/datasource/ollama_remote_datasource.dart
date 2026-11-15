@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../../../core/network/dio_client.dart';
-import '../adapter/ollama_model.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/core/network/dio_client.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
 
+/// Remote datasource communicating with the Ollama HTTP API.
 abstract class OllamaRemoteDatasource {
   String get baseUrl;
   void updateBaseUrl(String url);
@@ -147,7 +148,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
 
   @override
   Future<void> preloadModel(String modelName) async {
-    // Chamada sem prompt instrui o Ollama a carregar os pesos na memória/VRAM
+    // Sending an empty generate request instructs Ollama to load model weights into memory/VRAM.
     await _dioClient.dio.post(
       '$_baseUrl/api/generate',
       data: {'model': modelName},
@@ -214,7 +215,7 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
           yield content;
         }
       } catch (_) {
-        // Ignora chunks mal formatados
+        // Ignore malformed NDJSON chunks.
       }
     }
   }

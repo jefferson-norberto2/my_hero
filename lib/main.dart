@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'src/app.dart';
-import 'src/core/di/injection.dart';
+import 'package:my_hero/src/app.dart';
+import 'package:my_hero/src/core/di/injection.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

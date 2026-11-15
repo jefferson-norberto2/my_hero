@@ -1,6 +1,7 @@
-import 'chat_message_adapter.dart';
-import 'response_style.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
+/// Represents a persisted chat conversation and its associated configuration.
 class Conversation {
   final String id;
   String title;
@@ -24,7 +25,7 @@ class Conversation {
     required this.updatedAt,
   });
 
-  // Retrocompatibilidade
+  // Backward-compatible computed getters for legacy JSON records.
   bool get is2B => modelName.contains('2b') || modelName.contains('3b');
   bool get useCpu => true;
   int get totalTokens => lastPromptTokens + lastEvalTokens;

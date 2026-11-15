@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
 void main() {
   group('ResponseStyle Enum', () {
@@ -49,6 +49,7 @@ void main() {
 
     test('fromString should parse case-insensitively with default fallback to simple', () {
       expect(ResponseStyle.fromString('brief'), ResponseStyle.brief);
+      expect(ResponseStyle.fromString('BRIEF'), ResponseStyle.brief);
       expect(ResponseStyle.fromString('breve'), ResponseStyle.brief);
       expect(ResponseStyle.fromString('detailed'), ResponseStyle.detailed);
       expect(ResponseStyle.fromString('detalhada'), ResponseStyle.detailed);

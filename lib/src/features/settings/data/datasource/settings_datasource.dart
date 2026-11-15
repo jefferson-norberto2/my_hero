@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:path_provider/path_provider.dart';
-import '../../../../core/constants/app_constants.dart';
 
+/// Persists application-wide settings such as the Ollama server URL.
 abstract class SettingsDatasource {
   Future<String> getOllamaBaseUrl();
   Future<void> saveOllamaBaseUrl(String url);
@@ -52,7 +53,7 @@ class SettingsDatasourceImpl implements SettingsDatasource {
       map[_ollamaUrlKey] = url;
       await file.writeAsString(jsonEncode(map));
     } catch (_) {
-      // Falha silenciosa
+      // Ignore write failures silently to preserve app stability.
     }
   }
 }

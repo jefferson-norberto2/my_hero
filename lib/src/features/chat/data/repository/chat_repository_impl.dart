@@ -1,14 +1,15 @@
 import 'dart:typed_data';
-import '../adapter/chat_attachment.dart';
-import '../adapter/chat_message_adapter.dart';
-import '../adapter/conversation_model.dart';
-import '../adapter/ollama_model.dart';
-import '../adapter/response_style.dart';
-import '../datasource/chat_history_datasource.dart';
-import '../datasource/ollama_remote_datasource.dart';
-import '../datasource/settings_datasource.dart';
-import 'chat_repository.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
+import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
+/// Default [ChatRepository] implementation backed by Ollama and local JSON storage.
 class ChatRepositoryImpl implements ChatRepository {
   final OllamaRemoteDatasource _ollamaDatasource;
   final ChatHistoryDatasource _historyDatasource;
@@ -72,7 +73,8 @@ class ChatRepositoryImpl implements ChatRepository {
     final isHealthy = await _ollamaDatasource.checkHealth();
     if (!isHealthy) {
       throw StateError(
-          'Ollama não está respondendo em ${_ollamaDatasource.baseUrl}.');
+        'Ollama não está respondendo em ${_ollamaDatasource.baseUrl}.',
+      );
     }
 
     onProgress(0.5, 'Carregando "$modelName" na memória...');
@@ -85,7 +87,7 @@ class ChatRepositoryImpl implements ChatRepository {
     String? modelName,
     ResponseStyle responseStyle = ResponseStyle.simple,
   }) async {
-    // Para Ollama, cada conversa é isolada pelo histórico de mensagens enviado na requisição
+    // Each Ollama conversation is isolated by the message history sent per request.
   }
 
   @override
@@ -100,18 +102,18 @@ class ChatRepositoryImpl implements ChatRepository {
   }) {
     final messages = <Map<String, dynamic>>[];
 
-    // 1. Mensagem de sistema com instrução de estilo
+    // 1. System prompt enforcing response style.
     messages.add({
       'role': 'system',
       'content': responseStyle.systemInstruction,
     });
 
-    // 2. Histórico recente de mensagens para contexto (excluindo mensagens de sistema do app)
+    // 2. Recent message history excluding internal app system banners.
     final relevantHistory = history
         .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
         .toList();
 
-    // Mantém as últimas 10 mensagens para contexto ágil
+    // Keep up to the last 10 messages for responsive context size.
     final contextHistory = relevantHistory.length > 10
         ? relevantHistory.sublist(relevantHistory.length - 10)
         : relevantHistory;
@@ -120,7 +122,7 @@ class ChatRepositoryImpl implements ChatRepository {
       messages.add(ChatMessageAdapter.toOllamaMessage(msg));
     }
 
-    // 3. Nova mensagem do usuário
+    // 3. New user message.
     final effectiveImage = imageBytes ??
         (attachment != null && attachment.type == AttachmentType.image
             ? attachment.bytes

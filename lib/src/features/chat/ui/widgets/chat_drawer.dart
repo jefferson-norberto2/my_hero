@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../controller/chat_controller.dart';
-import 'ollama_server_config_dialog.dart';
 
+/// Navigation drawer showing conversation history and quick access to settings.
 class ChatDrawer extends StatelessWidget {
   final ChatController controller;
+  final VoidCallback? onOpenSettings;
 
-  const ChatDrawer({super.key, required this.controller});
+  const ChatDrawer({
+    super.key,
+    required this.controller,
+    this.onOpenSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +25,8 @@ class ChatDrawer extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
                     child: const Icon(Icons.bolt, color: Colors.teal),
                   ),
                   const SizedBox(width: 12),
@@ -77,12 +83,15 @@ class ChatDrawer extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final item = convs[index];
                       final isSelected = item.id == currentId;
-                      final modelLabel = item.modelName.isNotEmpty ? item.modelName : 'Ollama';
+                      final modelLabel =
+                          item.modelName.isNotEmpty ? item.modelName : 'Ollama';
 
                       return ListTile(
                         selected: isSelected,
-                        selectedTileColor:
-                            Theme.of(context).colorScheme.primaryContainer.withAlpha(80),
+                        selectedTileColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withAlpha(80),
                         leading: Icon(
                           isSelected
                               ? Icons.chat_bubble
@@ -94,8 +103,9 @@ class ChatDrawer extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontWeight:
-                                isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                         subtitle: Text(
@@ -124,23 +134,27 @@ class ChatDrawer extends StatelessWidget {
               builder: (context) {
                 final host = controller.ollamaBaseUrl.value;
                 final isConnected = controller.isOllamaConnected.value;
+                final isGenerating = controller.isGenerating.value;
 
                 return ListTile(
+                  enabled: !isGenerating,
                   leading: Icon(
                     Icons.dns_rounded,
                     color: isConnected ? Colors.teal : Colors.orange,
                   ),
-                  title: const Text('Servidor Ollama'),
+                  title: const Text('Configurações'),
                   subtitle: Text(
                     host,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   trailing: const Icon(Icons.tune, size: 18),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    OllamaServerConfigDialog.show(context, controller);
-                  },
+                  onTap: isGenerating
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          onOpenSettings?.call();
+                        },
                 );
               },
             ),

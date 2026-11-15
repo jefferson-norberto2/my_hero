@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
-import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
 void main() {
   group('Conversation Model', () {

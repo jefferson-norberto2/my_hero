@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
-import '../adapter/chat_message_adapter.dart';
-import '../adapter/conversation_model.dart';
-import '../adapter/ollama_model.dart';
-import '../adapter/response_style.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
+/// Repository contract for chat sessions, messaging, and Ollama model operations.
 abstract class ChatRepository {
   String get ollamaBaseUrl;
 

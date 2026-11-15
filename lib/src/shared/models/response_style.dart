@@ -1,3 +1,4 @@
+/// Defines the verbosity and tone of assistant responses.
 enum ResponseStyle {
   brief,
   simple,
@@ -25,7 +26,7 @@ enum ResponseStyle {
     }
   }
 
-  /// Frase concatenada no final do prompt do usuário para orientar a resposta da IA
+  /// Instruction appended to the end of the user prompt to guide the AI response.
   String get promptInstruction {
     switch (this) {
       case ResponseStyle.brief:
@@ -37,7 +38,7 @@ enum ResponseStyle {
     }
   }
 
-  /// Concatena a instrução de estilo ao final do texto enviado para a IA
+  /// Appends the style instruction to the prompt sent to the model.
   String applyToPrompt(String prompt) {
     final trimmed = prompt.trim();
     if (trimmed.isEmpty) return trimmed;
@@ -56,7 +57,7 @@ enum ResponseStyle {
   }
 
   static ResponseStyle fromString(String? value) {
-    switch (value) {
+    switch (value?.toLowerCase()) {
       case 'brief':
       case 'breve':
         return ResponseStyle.brief;

@@ -1,16 +1,18 @@
 import 'dart:typed_data';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/core/utils/url_utils.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
+import 'package:my_hero/src/shared/services/media_picker_service.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../core/constants/app_constants.dart';
-import '../../../core/utils/url_utils.dart';
-import '../../../shared/services/media_picker_service.dart';
-import '../data/adapter/chat_attachment.dart';
-import '../data/adapter/chat_message_adapter.dart';
-import '../data/adapter/chat_metrics.dart';
-import '../data/adapter/conversation_model.dart';
-import '../data/adapter/ollama_model.dart';
-import '../data/adapter/response_style.dart';
-import '../data/repository/chat_repository.dart';
 
+/// Manages reactive state and business logic for the chat screen.
 class ChatController {
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
@@ -21,7 +23,7 @@ class ChatController {
   })  : _repository = repository,
         _mediaPickerService = mediaPickerService;
 
-  // Signals de estado reativo
+  // Reactive state signals
   final ollamaBaseUrl = signal<String>(AppConstants.ollamaBaseUrl);
   final availableModels = signal<List<OllamaModel>>([]);
   final selectedModelName = signal<String>('');
@@ -37,16 +39,10 @@ class ChatController {
   final attachedAttachment = signal<ChatAttachment?>(null);
   final attachedImage = signal<Uint8List?>(null);
 
-  // Métricas de Contexto e VRAM
+  // Context and VRAM metrics
   final currentMetrics = signal<ChatMetrics>(const ChatMetrics());
 
-  // Retrocompatibilidade para widgets existentes
-  bool get isCpu => true;
-  final backendsSelected = signal<List<bool>>([true, false]);
-  final downloadProgress = signal<double>(0.0);
-  final is2BModel = signal<bool>(true);
-
-  // Histórico de conversas
+  // Conversation history
   final conversations = signal<List<Conversation>>([]);
   final currentConversationId = signal<String?>(null);
 
@@ -62,6 +58,18 @@ class ChatController {
     }
   }
 
+  /// Builds route arguments reflecting the active chat state for the settings screen.
+  SettingsArgs buildSettingsArgs() {
+    return SettingsArgs(
+      selectedModelName: selectedModelName.value,
+      responseStyle: responseStyle.value,
+      ollamaBaseUrl: ollamaBaseUrl.value,
+      availableModels: List<OllamaModel>.from(availableModels.value),
+      isOllamaConnected: isOllamaConnected.value,
+      isModelLoaded: isModelLoaded.value,
+    );
+  }
+
   Future<void> init() async {
     await loadSavedConversations();
     await loadOllamaServerUrl();
@@ -72,7 +80,9 @@ class ChatController {
     try {
       final savedUrl = await _repository.loadOllamaBaseUrl();
       ollamaBaseUrl.value = savedUrl;
-    } catch (_) {}
+    } catch (_) {
+      // Keep default URL if persisted configuration cannot be read.
+    }
   }
 
   Future<bool> testOllamaConnection(String host) async {
@@ -104,7 +114,7 @@ class ChatController {
       availableModels.value = models;
 
       if (models.isNotEmpty) {
-        // Se já houver um modelo carregado na memória do Ollama, prioriza ele
+        // Prefer any model already loaded in Ollama memory.
         final alreadyLoaded = models.where((m) => m.isLoaded).firstOrNull;
 
         if (selectedModelName.value.isEmpty) {
@@ -115,7 +125,7 @@ class ChatController {
           selectedModelName.value = target;
         }
 
-        // Verifica se o modelo atualmente selecionado já está carregado
+        // Check whether the currently selected model is already loaded.
         final currentModelInfo =
             models.where((m) => m.name == selectedModelName.value).firstOrNull;
         if (currentModelInfo != null && currentModelInfo.isLoaded) {
@@ -150,12 +160,14 @@ class ChatController {
     }
   }
 
-  /// Cria uma nova conversa com contexto 100% limpo
+  /// Creates a new conversation with an empty message history.
   Future<void> createNewConversation() async {
     final now = DateTime.now();
     final modelToUse = selectedModelName.value.isNotEmpty
         ? selectedModelName.value
-        : (availableModels.value.isNotEmpty ? availableModels.value.first.name : '');
+        : (availableModels.value.isNotEmpty
+            ? availableModels.value.first.name
+            : '');
 
     final newConv = Conversation(
       id: now.millisecondsSinceEpoch.toString(),
@@ -179,7 +191,7 @@ class ChatController {
     await _saveCurrentState();
   }
 
-  /// Seleciona uma conversa e carrega o histórico, estilo e métricas dela
+  /// Selects a conversation and restores its messages, style, and token metrics.
   Future<void> selectConversation(String id) async {
     if (isGenerating.value) return;
 
@@ -192,7 +204,6 @@ class ChatController {
       selectedModelName.value = conv.modelName;
     }
     responseStyle.value = conv.responseStyle;
-    is2BModel.value = conv.is2B;
 
     currentMetrics.value = currentMetrics.value.copyWith(
       promptTokens: conv.lastPromptTokens,
@@ -217,11 +228,10 @@ class ChatController {
     await _repository.saveConversations(conversations.value);
   }
 
-  /// Carrega o modelo selecionado na memória do Ollama
+  /// Preloads the selected model into Ollama memory.
   Future<void> loadModel(String modelName) async {
     isLoading.value = true;
     loadingProgress.value = 0.0;
-    downloadProgress.value = 0.0;
     loadingStatus.value = 'Solicitando carregamento de $modelName no Ollama...';
     errorMessage.value = null;
 
@@ -230,7 +240,6 @@ class ChatController {
         modelName: modelName,
         onProgress: (progress, status) {
           loadingProgress.value = progress;
-          downloadProgress.value = progress;
           loadingStatus.value = status;
         },
       );
@@ -239,10 +248,11 @@ class ChatController {
       isModelLoaded.value = true;
       isLoading.value = false;
 
-      // Atualiza os modelos disponíveis para refletir que agora está em memória
+      // Refresh available models to reflect memory allocation and context limit.
       await refreshModels();
 
-      final modelInfo = availableModels.value.where((m) => m.name == modelName).firstOrNull;
+      final modelInfo =
+          availableModels.value.where((m) => m.name == modelName).firstOrNull;
       if (modelInfo != null) {
         _updateMetricsFromModel(modelInfo);
       }
@@ -253,21 +263,81 @@ class ChatController {
         await _saveCurrentState();
       }
 
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Modelo "$modelName" carregado na memória do computador!',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
+      _appendSystemMessage(
+        'Sistema: Modelo "$modelName" carregado na memória do computador!',
+      );
+      await _saveCurrentState();
     } catch (e) {
       isLoading.value = false;
       errorMessage.value = 'Falha ao carregar o modelo no Ollama: $e';
     }
   }
 
-  /// Altera as configurações da conversa (modelo e estilo de resposta)
+  /// Applies saved settings returned by the dedicated settings screen.
+  Future<void> applySettings(SettingsResult result) async {
+    if (isLoading.value || isGenerating.value) return;
+
+    if (result.ollamaBaseUrl != ollamaBaseUrl.value) {
+      ollamaBaseUrl.value = result.ollamaBaseUrl;
+      _repository.updateOllamaBaseUrl(result.ollamaBaseUrl);
+    }
+
+    isOllamaConnected.value = result.isOllamaConnected;
+    availableModels.value = result.availableModels;
+
+    final previousModel = selectedModelName.value;
+    final previousStyle = responseStyle.value;
+    final wasLoaded = isModelLoaded.value;
+
+    final targetModel = result.selectedModelName;
+    final targetStyle = result.responseStyle;
+
+    final modelChanged = targetModel != previousModel;
+    final styleChanged = targetStyle != previousStyle;
+
+    selectedModelName.value = targetModel;
+    responseStyle.value = targetStyle;
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.modelName = targetModel;
+      conv.responseStyle = targetStyle;
+    }
+
+    final modelInfo =
+        availableModels.value.where((m) => m.name == targetModel).firstOrNull;
+    final isAlreadyLoadedInMemory =
+        result.isModelLoaded || (modelInfo?.isLoaded ?? false);
+
+    if (!result.isOllamaConnected || targetModel.isEmpty) {
+      isModelLoaded.value = false;
+    } else if (modelChanged || (!wasLoaded && isAlreadyLoadedInMemory)) {
+      if (isAlreadyLoadedInMemory) {
+        isModelLoaded.value = true;
+        if (modelInfo != null) {
+          _updateMetricsFromModel(modelInfo);
+        }
+        _appendSystemMessage(
+          'Sistema: Modelo "$targetModel" carregado na memória do computador!',
+        );
+      } else if (modelChanged) {
+        await loadModel(targetModel);
+      }
+    } else if (modelInfo != null && modelInfo.isLoaded) {
+      isModelLoaded.value = true;
+      _updateMetricsFromModel(modelInfo);
+    }
+
+    if (styleChanged) {
+      _appendSystemMessage(
+        'Sistema: Estilo de resposta alterado para "${targetStyle.label}".',
+      );
+    }
+
+    await _saveCurrentState();
+  }
+
+  /// Updates the active conversation model and response style.
   Future<void> updateConversationSettings({
     required String modelName,
     required ResponseStyle newResponseStyle,
@@ -281,7 +351,6 @@ class ChatController {
 
     responseStyle.value = newResponseStyle;
     selectedModelName.value = modelName;
-    is2BModel.value = modelName.contains('2b') || modelName.contains('3b');
 
     final conv = currentConversation;
     if (conv != null) {
@@ -293,16 +362,19 @@ class ChatController {
     if (modelChanged) {
       await loadModel(modelName);
     } else if (styleChanged) {
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Estilo de resposta alterado para "${newResponseStyle.label}".',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
+      _appendSystemMessage(
+        'Sistema: Estilo de resposta alterado para "${newResponseStyle.label}".',
+      );
       await _saveCurrentState();
     }
+  }
+
+  void _appendSystemMessage(String text) {
+    chatHistory.value = [
+      ...chatHistory.value,
+      ChatMessage(text: text, isUser: false),
+    ];
+    _syncMessagesToCurrentConversation();
   }
 
   void setAttachment(ChatAttachment? attachment) {
@@ -320,16 +392,14 @@ class ChatController {
     if (bytes == null) {
       clearAttachment();
     } else {
-      setAttachment(ChatAttachment(
-        name: 'imagem.png',
-        type: AttachmentType.image,
-        bytes: bytes,
-      ));
+      setAttachment(
+        ChatAttachment(
+          name: 'imagem.png',
+          type: AttachmentType.image,
+          bytes: bytes,
+        ),
+      );
     }
-  }
-
-  void clearAttachedImage() {
-    clearAttachment();
   }
 
   Future<void> pickImage({bool fromCamera = false}) async {
@@ -341,14 +411,7 @@ class ChatController {
         setAttachment(attachment);
       }
     } catch (e) {
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Erro ao selecionar imagem ($e)',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
+      _appendSystemMessage('Sistema: Erro ao selecionar imagem ($e)');
     }
   }
 
@@ -359,14 +422,7 @@ class ChatController {
         setAttachment(attachment);
       }
     } catch (e) {
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Erro ao selecionar arquivo de áudio ($e)',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
+      _appendSystemMessage('Sistema: Erro ao selecionar arquivo de áudio ($e)');
     }
   }
 
@@ -377,18 +433,14 @@ class ChatController {
         setAttachment(attachment);
       }
     } catch (e) {
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Erro ao selecionar documento ($e)',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
+      _appendSystemMessage('Sistema: Erro ao selecionar documento ($e)');
     }
   }
 
-  Future<void> sendMessage(String text, [ChatAttachment? customAttachment]) async {
+  Future<void> sendMessage(
+    String text, [
+    ChatAttachment? customAttachment,
+  ]) async {
     final attachment = customAttachment ?? attachedAttachment.value;
     final trimmedText = text.trim();
 
@@ -408,16 +460,21 @@ class ChatController {
     }
 
     final currentModel = selectedModelName.value;
-    if (effectiveText.isEmpty || currentModel.isEmpty || isGenerating.value) return;
+    if (effectiveText.isEmpty ||
+        currentModel.isEmpty ||
+        isGenerating.value) {
+      return;
+    }
 
     isModelLoaded.value = true;
     clearAttachment();
     _stopGenerationFlag = false;
     isGenerating.value = true;
 
-    // Atualiza o título se for uma conversa nova
+    // Derive a short conversation title from the first prompt.
     final conv = currentConversation;
-    if (conv != null && (conv.title == 'Nova Conversa' || conv.messages.isEmpty)) {
+    if (conv != null &&
+        (conv.title == 'Nova Conversa' || conv.messages.isEmpty)) {
       conv.title = effectiveText.length > 25
           ? '${effectiveText.substring(0, 25)}...'
           : effectiveText;
@@ -427,10 +484,11 @@ class ChatController {
       text: effectiveText,
       isUser: true,
       attachment: attachment,
-      imageBytes: attachment?.type == AttachmentType.image ? attachment?.bytes : null,
+      imageBytes:
+          attachment?.type == AttachmentType.image ? attachment?.bytes : null,
     );
 
-    // Adiciona a pergunta do usuário e uma resposta vazia para preenchimento em stream
+    // Append user prompt and an empty assistant placeholder for streaming tokens.
     chatHistory.value = [
       ...chatHistory.value,
       userMessage,
@@ -444,7 +502,8 @@ class ChatController {
       final stream = _repository.sendMessage(
         text: promptToSend,
         attachment: attachment,
-        imageBytes: attachment?.type == AttachmentType.image ? attachment?.bytes : null,
+        imageBytes:
+            attachment?.type == AttachmentType.image ? attachment?.bytes : null,
         modelName: currentModel,
         history: chatHistory.value.sublist(0, chatHistory.value.length - 2),
         responseStyle: responseStyle.value,
@@ -486,29 +545,6 @@ class ChatController {
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
-    }
-  }
-
-  Future<void> pickAndSendImage(String currentText, {bool fromCamera = false}) async {
-    try {
-      final attachment = fromCamera
-          ? await _mediaPickerService.pickImageFromCamera()
-          : await _mediaPickerService.pickImageFromGallery();
-      if (attachment != null) {
-        await sendMessage(
-          currentText.isEmpty ? 'Analise esta imagem' : currentText,
-          attachment,
-        );
-      }
-    } catch (e) {
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text: 'Sistema: Erro ao selecionar imagem ($e)',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
     }
   }
 

@@ -3,8 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
-import 'package:my_hero/src/features/chat/data/adapter/ollama_model.dart';
-import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
+import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
@@ -253,6 +254,101 @@ void main() {
       await controller.loadOllamaServerUrl();
 
       expect(controller.ollamaBaseUrl.value, 'http://10.0.0.5:11434');
+    });
+  });
+
+  group('ChatController - Settings Integration', () {
+    test('buildSettingsArgs captures current controller state', () {
+      controller.ollamaBaseUrl.value = 'http://192.168.1.244:11434';
+      controller.selectedModelName.value = 'mimo-v2.6:9b';
+      controller.responseStyle.value = ResponseStyle.detailed;
+      controller.isOllamaConnected.value = true;
+      controller.isModelLoaded.value = true;
+
+      final args = controller.buildSettingsArgs();
+
+      expect(args.ollamaBaseUrl, 'http://192.168.1.244:11434');
+      expect(args.selectedModelName, 'mimo-v2.6:9b');
+      expect(args.responseStyle, ResponseStyle.detailed);
+      expect(args.isOllamaConnected, isTrue);
+      expect(args.isModelLoaded, isTrue);
+    });
+
+    test('applySettings updates loaded model, style, metrics, and host without duplicate preload', () async {
+      await controller.createNewConversation();
+      controller.selectedModelName.value = 'llama3.2:3b';
+      controller.isModelLoaded.value = false;
+
+      const loadedModel = OllamaModel(
+        name: 'mimo-v2.6:9b',
+        model: 'mimo-v2.6:9b',
+        size: 5000000000,
+        isLoaded: true,
+        sizeVram: 4080218931, // ~3.8 GB
+        contextLength: 8192,
+      );
+
+      await controller.applySettings(
+        const SettingsResult(
+          selectedModelName: 'mimo-v2.6:9b',
+          responseStyle: ResponseStyle.brief,
+          ollamaBaseUrl: 'http://192.168.1.244:11434',
+          availableModels: [loadedModel],
+          isOllamaConnected: true,
+          isModelLoaded: true,
+        ),
+      );
+
+      expect(controller.ollamaBaseUrl.value, 'http://192.168.1.244:11434');
+      expect(controller.selectedModelName.value, 'mimo-v2.6:9b');
+      expect(controller.responseStyle.value, ResponseStyle.brief);
+      expect(controller.isModelLoaded.value, isTrue);
+      expect(controller.currentMetrics.value.vramFormatted, '3.8 GB');
+      expect(controller.currentMetrics.value.contextLimit, 8192);
+      expect(controller.currentConversation?.modelName, 'mimo-v2.6:9b');
+      expect(controller.currentConversation?.responseStyle, ResponseStyle.brief);
+
+      verifyNever(
+        () => mockRepository.loadModel(
+          modelName: any(named: 'modelName'),
+          onProgress: any(named: 'onProgress'),
+        ),
+      );
+    });
+
+    test('applySettings preloads newly selected unloaded model', () async {
+      await controller.createNewConversation();
+      when(
+        () => mockRepository.loadModel(
+          modelName: 'deepseek-r1:8b',
+          onProgress: any(named: 'onProgress'),
+        ),
+      ).thenAnswer((_) async {});
+
+      const unloadedModel = OllamaModel(
+        name: 'deepseek-r1:8b',
+        model: 'deepseek-r1:8b',
+        size: 5000000000,
+        isLoaded: false,
+      );
+
+      await controller.applySettings(
+        const SettingsResult(
+          selectedModelName: 'deepseek-r1:8b',
+          responseStyle: ResponseStyle.simple,
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [unloadedModel],
+          isOllamaConnected: true,
+          isModelLoaded: false,
+        ),
+      );
+
+      verify(
+        () => mockRepository.loadModel(
+          modelName: 'deepseek-r1:8b',
+          onProgress: any(named: 'onProgress'),
+        ),
+      ).called(1);
     });
   });
 }

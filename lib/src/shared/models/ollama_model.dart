@@ -1,3 +1,4 @@
+/// Represents an Ollama model returned by the local or remote server.
 class OllamaModel {
   final String name;
   final String model;

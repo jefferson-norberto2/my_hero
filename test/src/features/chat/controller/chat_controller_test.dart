@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
@@ -434,6 +436,71 @@ void main() {
 
       await streamController.close();
       await sendFuture;
+    });
+  });
+
+  group('ChatController - ComputeMode & Memory Metrics', () {
+    test('applySettings propagates CPU and hybrid memory allocations to currentMetrics', () async {
+      await controller.createNewConversation();
+
+      final cpuModel = OllamaModel(
+        name: 'llama3.2:3b',
+        model: 'llama3.2:3b',
+        size: 5000000000,
+        isLoaded: true,
+        memoryAllocation: OllamaMemoryParser.fromBytes(
+          sizeBytes: 5798205849,
+          vramBytes: 0,
+        ),
+      );
+
+      await controller.applySettings(
+        SettingsResult(
+          selectedModelName: 'llama3.2:3b',
+          responseStyle: ResponseStyle.simple,
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [cpuModel],
+          isOllamaConnected: true,
+          isModelLoaded: true,
+        ),
+      );
+
+      expect(controller.currentMetrics.value.computeMode, ComputeMode.cpu);
+      expect(controller.currentMetrics.value.memoryFormatted, '5.4 GB');
+      expect(
+        controller.currentMetrics.value.hardwareTooltip,
+        'Memória RAM (CPU): 5.4 GB',
+      );
+
+      final hybridModel = OllamaModel(
+        name: 'qwen3:8b',
+        model: 'qwen3:8b',
+        size: 5000000000,
+        isLoaded: true,
+        sizeVram: 3221225472,
+        memoryAllocation: OllamaMemoryParser.fromBytes(
+          sizeBytes: 5798205849,
+          vramBytes: 3221225472,
+        ),
+      );
+
+      await controller.applySettings(
+        SettingsResult(
+          selectedModelName: 'qwen3:8b',
+          responseStyle: ResponseStyle.simple,
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [hybridModel],
+          isOllamaConnected: true,
+          isModelLoaded: true,
+        ),
+      );
+
+      expect(controller.currentMetrics.value.computeMode, ComputeMode.hybrid);
+      expect(controller.currentMetrics.value.memoryFormatted, '5.4 GB');
+      expect(
+        controller.currentMetrics.value.hardwareTooltip,
+        'VRAM: 3.0 GB | RAM: 2.4 GB',
+      );
     });
   });
 }

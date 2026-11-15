@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_thinking_parser.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
@@ -134,13 +135,14 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
         ).firstOrNull;
 
         final isLoaded = loadedMatch != null;
-        final sizeVram = (loadedMatch?['size_vram'] as num?)?.toInt() ?? 0;
+        final memoryAllocation = OllamaMemoryParser.parsePsEntry(loadedMatch);
         final contextLength = (loadedMatch?['context_length'] as num?)?.toInt();
 
         return OllamaModel.fromJson(
           map,
           isLoaded: isLoaded,
-          sizeVram: sizeVram,
+          sizeVram: memoryAllocation.vramBytes,
+          memoryAllocation: memoryAllocation,
           contextLength: contextLength,
         );
       }).toList();

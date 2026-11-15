@@ -5,8 +5,11 @@ import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/memory_allocation.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
@@ -140,8 +143,17 @@ class ChatController {
   }
 
   void _updateMetricsFromModel(OllamaModel model) {
+    final allocation = model.memoryAllocation.computeMode != ComputeMode.none
+        ? model.memoryAllocation
+        : (model.isLoaded && model.sizeVram > 0
+            ? OllamaMemoryParser.fromBytes(
+                sizeBytes: model.sizeVram,
+                vramBytes: model.sizeVram,
+              )
+            : const MemoryAllocation.empty());
+
     currentMetrics.value = currentMetrics.value.copyWith(
-      vramBytes: model.sizeVram,
+      memoryAllocation: allocation,
       contextLimit: model.contextLength > 0 ? model.contextLength : 4096,
     );
   }
@@ -311,6 +323,9 @@ class ChatController {
 
     if (!result.isOllamaConnected || targetModel.isEmpty) {
       isModelLoaded.value = false;
+      currentMetrics.value = currentMetrics.value.copyWith(
+        memoryAllocation: const MemoryAllocation.empty(),
+      );
     } else if (modelChanged || (!wasLoaded && isAlreadyLoadedInMemory)) {
       if (isAlreadyLoadedInMemory) {
         isModelLoaded.value = true;

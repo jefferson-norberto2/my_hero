@@ -1,3 +1,6 @@
+import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/memory_allocation.dart';
+
 /// Represents an Ollama model returned by the local or remote server.
 class OllamaModel {
   final String name;
@@ -9,6 +12,7 @@ class OllamaModel {
   final String? quantizationLevel;
   final bool isLoaded;
   final int sizeVram;
+  final MemoryAllocation memoryAllocation;
   final int contextLength;
 
   const OllamaModel({
@@ -21,33 +25,28 @@ class OllamaModel {
     this.quantizationLevel,
     this.isLoaded = false,
     this.sizeVram = 0,
+    this.memoryAllocation = const MemoryAllocation.empty(),
     this.contextLength = 4096,
   });
 
   String get sizeFormatted {
     if (size <= 0) return '';
-    final gb = size / (1024 * 1024 * 1024);
-    if (gb >= 1.0) {
-      return '${gb.toStringAsFixed(1)} GB';
-    }
-    final mb = size / (1024 * 1024);
-    return '${mb.toStringAsFixed(0)} MB';
+    return MemoryAllocation.formatBytes(size);
   }
 
   String get sizeVramFormatted {
-    if (sizeVram <= 0) return '0 MB';
-    final gb = sizeVram / (1024 * 1024 * 1024);
-    if (gb >= 1.0) {
-      return '${gb.toStringAsFixed(1)} GB';
-    }
-    final mb = sizeVram / (1024 * 1024);
-    return '${mb.toStringAsFixed(0)} MB';
+    return MemoryAllocation.formatBytes(sizeVram);
   }
+
+  ComputeMode get computeMode => memoryAllocation.computeMode;
+
+  String get memoryFormatted => memoryAllocation.formattedMemory;
 
   factory OllamaModel.fromJson(
     Map<String, dynamic> json, {
     bool isLoaded = false,
     int sizeVram = 0,
+    MemoryAllocation memoryAllocation = const MemoryAllocation.empty(),
     int? contextLength,
   }) {
     final details = json['details'] as Map<String, dynamic>? ?? {};
@@ -63,6 +62,7 @@ class OllamaModel {
       quantizationLevel: details['quantization_level'] as String?,
       isLoaded: isLoaded,
       sizeVram: sizeVram,
+      memoryAllocation: memoryAllocation,
       contextLength: contextLength ?? defaultCtx,
     );
   }
@@ -77,6 +77,7 @@ class OllamaModel {
     String? quantizationLevel,
     bool? isLoaded,
     int? sizeVram,
+    MemoryAllocation? memoryAllocation,
     int? contextLength,
   }) {
     return OllamaModel(
@@ -89,6 +90,7 @@ class OllamaModel {
       quantizationLevel: quantizationLevel ?? this.quantizationLevel,
       isLoaded: isLoaded ?? this.isLoaded,
       sizeVram: sizeVram ?? this.sizeVram,
+      memoryAllocation: memoryAllocation ?? this.memoryAllocation,
       contextLength: contextLength ?? this.contextLength,
     );
   }

@@ -1,16 +1,30 @@
+import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/memory_allocation.dart';
+
+/// Tracks token usage, context limit, and hardware memory consumption for active chats.
 class ChatMetrics {
   final int promptTokens;
   final int evalTokens;
   final int totalTokens;
   final int contextLimit;
-  final int vramBytes;
+  final MemoryAllocation memoryAllocation;
 
   const ChatMetrics({
     this.promptTokens = 0,
     this.evalTokens = 0,
     this.contextLimit = 4096,
-    this.vramBytes = 0,
+    this.memoryAllocation = const MemoryAllocation.empty(),
   }) : totalTokens = promptTokens + evalTokens;
+
+  ComputeMode get computeMode => memoryAllocation.computeMode;
+
+  int get vramBytes => memoryAllocation.vramBytes;
+
+  int get ramBytes => memoryAllocation.ramBytes;
+
+  int get totalMemoryBytes => memoryAllocation.totalBytes;
+
+  int get displayedMemoryBytes => memoryAllocation.displayedBytes;
 
   double get contextUsagePercent {
     if (contextLimit <= 0) return 0.0;
@@ -26,27 +40,25 @@ class ChatMetrics {
     return remaining > 0 ? remaining : 0;
   }
 
-  String get vramFormatted {
-    if (vramBytes <= 0) return '0 MB';
-    final gb = vramBytes / (1024 * 1024 * 1024);
-    if (gb >= 1.0) {
-      return '${gb.toStringAsFixed(1)} GB';
-    }
-    final mb = vramBytes / (1024 * 1024);
-    return '${mb.toStringAsFixed(0)} MB';
-  }
+  String get memoryFormatted => memoryAllocation.formattedMemory;
+
+  String get vramFormatted => memoryAllocation.formattedVram;
+
+  String get ramFormatted => memoryAllocation.formattedRam;
+
+  String get hardwareTooltip => memoryAllocation.hardwareTooltip;
 
   ChatMetrics copyWith({
     int? promptTokens,
     int? evalTokens,
     int? contextLimit,
-    int? vramBytes,
+    MemoryAllocation? memoryAllocation,
   }) {
     return ChatMetrics(
       promptTokens: promptTokens ?? this.promptTokens,
       evalTokens: evalTokens ?? this.evalTokens,
       contextLimit: contextLimit ?? this.contextLimit,
-      vramBytes: vramBytes ?? this.vramBytes,
+      memoryAllocation: memoryAllocation ?? this.memoryAllocation,
     );
   }
 }

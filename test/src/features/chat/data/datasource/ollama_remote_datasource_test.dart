@@ -7,6 +7,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/compute_mode.dart';
 
 class MockDio extends Mock implements Dio {}
 
@@ -120,6 +121,74 @@ void main() {
       expect(models[1].name, 'deepseek-r1:8b');
       expect(models[1].isLoaded, isFalse);
       expect(models[1].sizeVram, 0);
+      expect(models[1].computeMode, ComputeMode.none);
+    });
+
+    test('getAvailableModels reads size and size_vram from /api/ps for CPU, GPU, and hybrid modes', () async {
+      when(
+        () => mockDio.get(
+          any(that: contains('/api/ps')),
+          options: any(named: 'options'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 200,
+          data: {
+            'models': [
+              {
+                'name': 'cpu-only:latest',
+                'size': 5798205849, // ~5.4 GB
+                'size_vram': 0,
+              },
+              {
+                'name': 'hybrid-model:latest',
+                'size': 5798205849, // ~5.4 GB
+                'size_vram': 3221225472, // 3.0 GB
+              },
+              {
+                'name': 'gpu-only:latest',
+                'size': 4080218931, // ~3.8 GB
+                'size_vram': 4080218931,
+              },
+            ],
+          },
+        ),
+      );
+
+      when(
+        () => mockDio.get(
+          any(that: contains('/api/tags')),
+          options: any(named: 'options'),
+        ),
+      ).thenAnswer(
+        (_) async => Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 200,
+          data: {
+            'models': [
+              {'name': 'cpu-only:latest', 'model': 'cpu-only:latest', 'size': 4500000000},
+              {'name': 'hybrid-model:latest', 'model': 'hybrid-model:latest', 'size': 4500000000},
+              {'name': 'gpu-only:latest', 'model': 'gpu-only:latest', 'size': 3800000000},
+            ],
+          },
+        ),
+      );
+
+      final models = await datasource.getAvailableModels();
+
+      expect(models[0].computeMode, ComputeMode.cpu);
+      expect(models[0].memoryFormatted, '5.4 GB');
+      expect(models[0].memoryAllocation.ramBytes, 5798205849);
+
+      expect(models[1].computeMode, ComputeMode.hybrid);
+      expect(models[1].memoryFormatted, '5.4 GB');
+      expect(models[1].memoryAllocation.formattedVram, '3.0 GB');
+      expect(models[1].memoryAllocation.formattedRam, '2.4 GB');
+
+      expect(models[2].computeMode, ComputeMode.gpu);
+      expect(models[2].memoryFormatted, '3.8 GB');
+      expect(models[2].memoryAllocation.ramBytes, 0);
     });
 
     test('preloadModel calls POST /api/generate with model name', () async {

@@ -3,10 +3,13 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_hero/src/core/routes/app_routes.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_drawer.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_message_list.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/chat_metrics_badge.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
 /// Main chat page displaying conversation messages, input bar, and status metrics.
@@ -64,6 +67,68 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  String _memoryCardTitle(ComputeMode mode) {
+    switch (mode) {
+      case ComputeMode.gpu:
+        return 'Memória de Vídeo (VRAM)';
+      case ComputeMode.cpu:
+        return 'Memória Principal (RAM / CPU)';
+      case ComputeMode.hybrid:
+        return 'Memória Híbrida (GPU/CPU)';
+      case ComputeMode.none:
+        return 'Memória do Modelo';
+    }
+  }
+
+  Widget _buildMemoryDetailsCard(ChatMetrics metrics) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.teal.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.memory_rounded,
+            color: Colors.teal.shade700,
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _memoryCardTitle(metrics.computeMode),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  'Alocado no Ollama: ${metrics.memoryFormatted}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.teal.shade900,
+                  ),
+                ),
+                Text(
+                  metrics.hardwareTooltip,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.teal.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMetricsDetailsDialog(BuildContext context) {
     final metrics = _controller.currentMetrics.value;
     final theme = Theme.of(context);
@@ -91,46 +156,7 @@ class _ChatPageState extends State<ChatPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // VRAM Card
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.purple.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.memory_rounded,
-                      color: Colors.purple.shade700,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Memória de Vídeo (VRAM)',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            'Alocado no Ollama: ${metrics.vramFormatted}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.purple.shade900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildMemoryDetailsCard(metrics),
               const SizedBox(height: 14),
               // Context Card
               Container(
@@ -222,73 +248,9 @@ class _ChatPageState extends State<ChatPage> {
         final isLoaded = _controller.isModelLoaded.value;
         if (!isLoaded) return const SizedBox.shrink();
 
-        final metrics = _controller.currentMetrics.value;
-        final usagePercent = metrics.contextUsagePercent;
-        final remainingPercent = metrics.remainingPercent;
-
-        Color badgeColor = Colors.teal;
-        if (usagePercent > 80) {
-          badgeColor = Colors.red.shade400;
-        } else if (usagePercent > 50) {
-          badgeColor = Colors.amber.shade700;
-        }
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => _showMetricsDetailsDialog(context),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.memory_rounded,
-                    size: 14,
-                    color: Colors.purple.shade400,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    metrics.vramFormatted,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 1,
-                    height: 12,
-                    color: Colors.grey.withValues(alpha: 0.4),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.pie_chart_outline_rounded,
-                    size: 14,
-                    color: badgeColor,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Ctx: ${usagePercent.toStringAsFixed(0)}% (restam ${remainingPercent.toStringAsFixed(0)}%)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: badgeColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return ChatMetricsBadge(
+          metrics: _controller.currentMetrics.value,
+          onTap: () => _showMetricsDetailsDialog(context),
         );
       },
     );

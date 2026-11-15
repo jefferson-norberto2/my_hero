@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../controller/chat_controller.dart';
 import '../../data/adapter/ollama_model.dart';
 import '../../data/adapter/response_style.dart';
+import 'ollama_server_config_dialog.dart';
 
 class ModelSwitchDialog extends StatefulWidget {
   final ChatController controller;
@@ -136,12 +137,34 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'O contexto desta conversa e o novo modelo serão mantidos para as próximas perguntas.',
+                      'Ocluso no contexto desta conversa e o novo modelo serão mantidos para as próximas perguntas.',
                       style: TextStyle(fontSize: 12, color: Colors.black87),
                     ),
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.dns_outlined, size: 16, color: Colors.grey),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Servidor: ${widget.controller.ollamaBaseUrl.value}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    OllamaServerConfigDialog.show(context, widget.controller);
+                  },
+                  child: const Text('Alterar IP', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ),
           ],
         ),

@@ -7,6 +7,7 @@ import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/model_selector_widget.dart';
 import '../widgets/model_switch_dialog.dart';
+import '../widgets/ollama_server_config_dialog.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -249,17 +250,18 @@ class _ChatPageState extends State<ChatPage> {
             final isConnected = _controller.isOllamaConnected.value;
             final modelName = _controller.selectedModelName.value;
             final metrics = _controller.currentMetrics.value;
+            final host = _controller.ollamaBaseUrl.value;
 
             String subtitle;
             if (!isConnected) {
-              subtitle = 'Ollama desconectado (localhost:11434)';
+              subtitle = 'Ollama desconectado ($host)';
             } else if (isLoaded && modelName.isNotEmpty) {
               subtitle =
                   '$modelName • ${_controller.responseStyle.value.label} • VRAM: ${metrics.vramFormatted}';
             } else if (modelName.isNotEmpty) {
               subtitle = '$modelName (não carregado na memória)';
             } else {
-              subtitle = 'Nenhum modelo selecionado';
+              subtitle = 'Nenhum modelo selecionado ($host)';
             }
 
             return Column(
@@ -282,6 +284,23 @@ class _ChatPageState extends State<ChatPage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           _buildMetricsBadge(context),
+          SignalBuilder(
+            builder: (context) {
+              final isGenerating = _controller.isGenerating.value;
+              final isConnected = _controller.isOllamaConnected.value;
+
+              return IconButton(
+                icon: Icon(
+                  Icons.dns_rounded,
+                  color: isConnected ? null : Colors.red.shade300,
+                ),
+                tooltip: 'Configurar IP do Ollama',
+                onPressed: isGenerating
+                    ? null
+                    : () => OllamaServerConfigDialog.show(context, _controller),
+              );
+            },
+          ),
           SignalBuilder(
             builder: (context) {
               final isGenerating = _controller.isGenerating.value;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../controller/chat_controller.dart';
+import 'ollama_server_config_dialog.dart';
 
 class ChatDrawer extends StatelessWidget {
   final ChatController controller;
@@ -117,6 +118,31 @@ class ChatDrawer extends StatelessWidget {
                   );
                 },
               ),
+            ),
+            const Divider(height: 1),
+            SignalBuilder(
+              builder: (context) {
+                final host = controller.ollamaBaseUrl.value;
+                final isConnected = controller.isOllamaConnected.value;
+
+                return ListTile(
+                  leading: Icon(
+                    Icons.dns_rounded,
+                    color: isConnected ? Colors.teal : Colors.orange,
+                  ),
+                  title: const Text('Servidor Ollama'),
+                  subtitle: Text(
+                    host,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.tune, size: 18),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    OllamaServerConfigDialog.show(context, controller);
+                  },
+                );
+              },
             ),
           ],
         ),

@@ -3,6 +3,7 @@ import '../network/dio_client.dart';
 import '../../shared/services/media_picker_service.dart';
 import '../../features/chat/data/datasource/chat_history_datasource.dart';
 import '../../features/chat/data/datasource/ollama_remote_datasource.dart';
+import '../../features/chat/data/datasource/settings_datasource.dart';
 import '../../features/chat/data/repository/chat_repository.dart';
 import '../../features/chat/data/repository/chat_repository_impl.dart';
 import '../../features/chat/controller/chat_controller.dart';
@@ -15,6 +16,9 @@ Future<void> setupDependencies() async {
   getIt.registerLazySingleton<MediaPickerService>(() => MediaPickerService());
 
   // Features - Chat - Data
+  getIt.registerLazySingleton<SettingsDatasource>(
+    () => SettingsDatasourceImpl(),
+  );
   getIt.registerLazySingleton<OllamaRemoteDatasource>(
     () => OllamaRemoteDatasourceImpl(getIt<DioClient>()),
   );
@@ -25,6 +29,7 @@ Future<void> setupDependencies() async {
     () => ChatRepositoryImpl(
       ollamaDatasource: getIt<OllamaRemoteDatasource>(),
       historyDatasource: getIt<ChatHistoryDatasource>(),
+      settingsDatasource: getIt<SettingsDatasource>(),
     ),
   );
 

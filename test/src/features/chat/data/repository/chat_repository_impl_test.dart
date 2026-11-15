@@ -20,6 +20,7 @@ void main() {
   setUp(() {
     mockOllamaDatasource = MockOllamaRemoteDatasource();
     mockHistoryDatasource = MockChatHistoryDatasource();
+    when(() => mockOllamaDatasource.baseUrl).thenReturn('http://localhost:11434');
     repository = ChatRepositoryImpl(
       ollamaDatasource: mockOllamaDatasource,
       historyDatasource: mockHistoryDatasource,

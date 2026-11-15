@@ -27,7 +27,11 @@ void main() {
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenReturn(null);
+    when(() => mockRepository.checkOllamaHealth(any())).thenAnswer((_) async => true);
     when(() => mockRepository.checkOllamaHealth()).thenAnswer((_) async => true);
+    when(() => mockRepository.loadOllamaBaseUrl()).thenAnswer((_) async => 'http://localhost:11434');
+    when(() => mockRepository.updateOllamaBaseUrl(any())).thenReturn(null);
+    when(() => mockRepository.saveOllamaBaseUrl(any())).thenAnswer((_) async {});
     when(() => mockRepository.getAvailableModels()).thenAnswer((_) async => [
       const OllamaModel(
         name: 'llama3.2:3b',
@@ -216,6 +220,39 @@ void main() {
           onProgress: any(named: 'onProgress'),
         ),
       ).called(1);
+    });
+  });
+
+  group('ChatController - Ollama Network Host Settings', () {
+    test('testOllamaConnection should call checkOllamaHealth with normalized URL', () async {
+      when(() => mockRepository.checkOllamaHealth('http://192.168.1.55:11434'))
+          .thenAnswer((_) async => true);
+
+      final result = await controller.testOllamaConnection('192.168.1.55');
+
+      expect(result, isTrue);
+      verify(() => mockRepository.checkOllamaHealth('http://192.168.1.55:11434')).called(1);
+    });
+
+    test('updateOllamaHost should update repository, save URL, and refresh models', () async {
+      when(() => mockRepository.saveOllamaBaseUrl(any())).thenAnswer((_) async {});
+      when(() => mockRepository.checkOllamaHealth()).thenAnswer((_) async => true);
+
+      final success = await controller.updateOllamaHost('192.168.1.80:11434');
+
+      expect(success, isTrue);
+      expect(controller.ollamaBaseUrl.value, 'http://192.168.1.80:11434');
+      verify(() => mockRepository.updateOllamaBaseUrl('http://192.168.1.80:11434')).called(1);
+      verify(() => mockRepository.saveOllamaBaseUrl('http://192.168.1.80:11434')).called(1);
+    });
+
+    test('loadOllamaServerUrl should load URL from repository', () async {
+      when(() => mockRepository.loadOllamaBaseUrl())
+          .thenAnswer((_) async => 'http://10.0.0.5:11434');
+
+      await controller.loadOllamaServerUrl();
+
+      expect(controller.ollamaBaseUrl.value, 'http://10.0.0.5:11434');
     });
   });
 }

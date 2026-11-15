@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../controller/chat_controller.dart';
 import '../../data/adapter/ollama_model.dart';
+import 'ollama_server_config_dialog.dart';
 
 class ModelSelectorWidget extends StatelessWidget {
   final ChatController controller;
@@ -45,15 +46,26 @@ class ModelSelectorWidget extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Verifique se o Ollama está em execução no seu computador (porta 11434). Você pode iniciá-lo no terminal com `ollama serve`.',
-                    style: TextStyle(fontSize: 13),
+                  Text(
+                    'Não foi possível conectar em ${controller.ollamaBaseUrl.value}. Verifique se o serviço está ativo ou altere o IP da sua rede:',
+                    style: const TextStyle(fontSize: 13),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: controller.refreshModels,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Tentar Conectar Novamente'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: controller.refreshModels,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Tentar Novamente'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => OllamaServerConfigDialog.show(context, controller),
+                        icon: const Icon(Icons.dns_rounded),
+                        label: const Text('Configurar IP / Servidor'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -81,10 +93,23 @@ class ModelSelectorWidget extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: controller.refreshModels,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Atualizar Lista de Modelos'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: controller.refreshModels,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Atualizar Lista'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            OllamaServerConfigDialog.show(context, controller),
+                        icon: const Icon(Icons.dns_rounded),
+                        label: const Text('Configurar IP / Servidor'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -118,6 +143,11 @@ class ModelSelectorWidget extends StatelessWidget {
                         'Modelos disponíveis no seu Ollama:',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.dns_rounded, size: 20),
+                      tooltip: 'Configurar IP / Servidor',
+                      onPressed: () => OllamaServerConfigDialog.show(context, controller),
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh, size: 20),

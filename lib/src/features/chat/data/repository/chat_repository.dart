@@ -6,7 +6,15 @@ import '../adapter/ollama_model.dart';
 import '../adapter/response_style.dart';
 
 abstract class ChatRepository {
-  Future<bool> checkOllamaHealth();
+  String get ollamaBaseUrl;
+
+  void updateOllamaBaseUrl(String url);
+
+  Future<String> loadOllamaBaseUrl();
+
+  Future<void> saveOllamaBaseUrl(String url);
+
+  Future<bool> checkOllamaHealth([String? customUrl]);
 
   Future<List<OllamaModel>> getAvailableModels();
 

@@ -6,7 +6,9 @@ import '../../../../core/network/dio_client.dart';
 import '../adapter/ollama_model.dart';
 
 abstract class OllamaRemoteDatasource {
-  Future<bool> checkHealth();
+  String get baseUrl;
+  void updateBaseUrl(String url);
+  Future<bool> checkHealth([String? customUrl]);
   Future<List<OllamaModel>> getAvailableModels();
   Future<List<String>> getLoadedModelNames();
   Future<Map<String, dynamic>?> getLoadedModelInfo(String modelName);
@@ -23,16 +25,27 @@ abstract class OllamaRemoteDatasource {
 class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   final DioClient _dioClient;
   CancelToken? _currentCancelToken;
+  String _baseUrl;
 
-  OllamaRemoteDatasourceImpl(this._dioClient);
-
-  String get _baseUrl => AppConstants.ollamaBaseUrl;
+  OllamaRemoteDatasourceImpl(this._dioClient, {String? baseUrl})
+      : _baseUrl = baseUrl ?? AppConstants.ollamaBaseUrl;
 
   @override
-  Future<bool> checkHealth() async {
+  String get baseUrl => _baseUrl;
+
+  @override
+  void updateBaseUrl(String url) {
+    _baseUrl = url;
+  }
+
+  @override
+  Future<bool> checkHealth([String? customUrl]) async {
+    final targetUrl = (customUrl != null && customUrl.trim().isNotEmpty)
+        ? customUrl.trim()
+        : _baseUrl;
     try {
       final response = await _dioClient.dio.get(
-        '$_baseUrl/',
+        '$targetUrl/',
         options: Options(
           sendTimeout: const Duration(seconds: 3),
           receiveTimeout: const Duration(seconds: 3),

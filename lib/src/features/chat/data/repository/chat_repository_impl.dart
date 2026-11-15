@@ -6,21 +6,51 @@ import '../adapter/ollama_model.dart';
 import '../adapter/response_style.dart';
 import '../datasource/chat_history_datasource.dart';
 import '../datasource/ollama_remote_datasource.dart';
+import '../datasource/settings_datasource.dart';
 import 'chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final OllamaRemoteDatasource _ollamaDatasource;
   final ChatHistoryDatasource _historyDatasource;
+  final SettingsDatasource? _settingsDatasource;
 
   ChatRepositoryImpl({
     required OllamaRemoteDatasource ollamaDatasource,
     required ChatHistoryDatasource historyDatasource,
+    SettingsDatasource? settingsDatasource,
   })  : _ollamaDatasource = ollamaDatasource,
-        _historyDatasource = historyDatasource;
+        _historyDatasource = historyDatasource,
+        _settingsDatasource = settingsDatasource;
 
   @override
-  Future<bool> checkOllamaHealth() {
-    return _ollamaDatasource.checkHealth();
+  String get ollamaBaseUrl => _ollamaDatasource.baseUrl;
+
+  @override
+  void updateOllamaBaseUrl(String url) {
+    _ollamaDatasource.updateBaseUrl(url);
+  }
+
+  @override
+  Future<String> loadOllamaBaseUrl() async {
+    if (_settingsDatasource != null) {
+      final url = await _settingsDatasource.getOllamaBaseUrl();
+      _ollamaDatasource.updateBaseUrl(url);
+      return url;
+    }
+    return _ollamaDatasource.baseUrl;
+  }
+
+  @override
+  Future<void> saveOllamaBaseUrl(String url) async {
+    _ollamaDatasource.updateBaseUrl(url);
+    if (_settingsDatasource != null) {
+      await _settingsDatasource.saveOllamaBaseUrl(url);
+    }
+  }
+
+  @override
+  Future<bool> checkOllamaHealth([String? customUrl]) {
+    return _ollamaDatasource.checkHealth(customUrl);
   }
 
   @override
@@ -41,7 +71,8 @@ class ChatRepositoryImpl implements ChatRepository {
     onProgress(0.2, 'Conectando ao Ollama...');
     final isHealthy = await _ollamaDatasource.checkHealth();
     if (!isHealthy) {
-      throw StateError('Ollama não está respondendo em http://localhost:11434.');
+      throw StateError(
+          'Ollama não está respondendo em ${_ollamaDatasource.baseUrl}.');
     }
 
     onProgress(0.5, 'Carregando "$modelName" na memória...');

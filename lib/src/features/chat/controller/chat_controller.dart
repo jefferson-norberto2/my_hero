@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/url_utils.dart';
 import '../../../shared/services/media_picker_service.dart';
 import '../data/adapter/chat_attachment.dart';
 import '../data/adapter/chat_message_adapter.dart';
@@ -20,6 +22,7 @@ class ChatController {
         _mediaPickerService = mediaPickerService;
 
   // Signals de estado reativo
+  final ollamaBaseUrl = signal<String>(AppConstants.ollamaBaseUrl);
   final availableModels = signal<List<OllamaModel>>([]);
   final selectedModelName = signal<String>('');
   final isOllamaConnected = signal<bool>(true);
@@ -61,7 +64,29 @@ class ChatController {
 
   Future<void> init() async {
     await loadSavedConversations();
+    await loadOllamaServerUrl();
     await refreshModels();
+  }
+
+  Future<void> loadOllamaServerUrl() async {
+    try {
+      final savedUrl = await _repository.loadOllamaBaseUrl();
+      ollamaBaseUrl.value = savedUrl;
+    } catch (_) {}
+  }
+
+  Future<bool> testOllamaConnection(String host) async {
+    final normalized = normalizeOllamaUrl(host);
+    return _repository.checkOllamaHealth(normalized);
+  }
+
+  Future<bool> updateOllamaHost(String newHost) async {
+    final normalized = normalizeOllamaUrl(newHost);
+    ollamaBaseUrl.value = normalized;
+    _repository.updateOllamaBaseUrl(normalized);
+    await _repository.saveOllamaBaseUrl(normalized);
+    await refreshModels();
+    return isOllamaConnected.value;
   }
 
   Future<void> refreshModels() async {
@@ -71,7 +96,7 @@ class ChatController {
 
       if (!isHealthy) {
         errorMessage.value =
-            'Ollama não detectado em http://localhost:11434. Verifique se o serviço está ativo.';
+            'Ollama não detectado em ${ollamaBaseUrl.value}. Verifique se o serviço está ativo e acessível na rede.';
         return;
       }
 

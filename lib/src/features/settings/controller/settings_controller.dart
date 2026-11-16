@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/utils/url_utils.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:signals_flutter/signals_flutter.dart';
@@ -32,6 +34,8 @@ class SettingsController {
   final loadingProgress = signal<double>(0.0);
   final loadingStatus = signal<String>('');
   final loadErrorMessage = signal<String?>(null);
+  final downloadState =
+      signal<ModelDownloadState>(const ModelDownloadState.idle());
 
   final isEditingServer = signal<bool>(false);
   final isTestingConnection = signal<bool>(false);
@@ -40,6 +44,9 @@ class SettingsController {
   final connectionTestMessage = signal<String?>(null);
 
   String _initialServerUrl = AppConstants.ollamaBaseUrl;
+  StreamSubscription<ModelDownloadState>? _downloadSubscription;
+  bool _isDisposed = false;
+  bool _didHandleDownloadCompletion = false;
 
   /// Native maximum context supported by the currently selected model.
   int get activeModelMaxContext {
@@ -62,6 +69,8 @@ class SettingsController {
 
   /// Initializes the controller with optional route arguments or loads from storage.
   Future<void> init([SettingsArgs? args]) async {
+    _bindDownloadState();
+
     if (args != null) {
       final initialUrl = args.ollamaBaseUrl.isNotEmpty
           ? args.ollamaBaseUrl
@@ -258,6 +267,71 @@ class SettingsController {
     } finally {
       isLoadingModel.value = false;
     }
+  }
+
+  /// Starts downloading [rawModelName] via `/api/pull` in the data layer.
+  Future<void> downloadModel(String rawModelName) async {
+    final trimmed = rawModelName.trim();
+    if (trimmed.isEmpty || downloadState.value.isActive) return;
+
+    _didHandleDownloadCompletion = false;
+    loadErrorMessage.value = null;
+
+    try {
+      final result = await _repository.downloadModel(trimmed);
+      if (_isDisposed) return;
+      await _handleDownloadStateUpdate(result);
+    } catch (e) {
+      if (!_isDisposed) {
+        loadErrorMessage.value = 'Falha ao baixar o modelo: $e';
+      }
+    }
+  }
+
+  /// Cancels any active model download running in the data layer.
+  Future<void> cancelModelDownload() {
+    return _repository.cancelModelDownload();
+  }
+
+  void _bindDownloadState() {
+    downloadState.value = _repository.currentDownloadState;
+    _didHandleDownloadCompletion =
+        downloadState.value.status == ModelDownloadStatus.completed;
+    _downloadSubscription?.cancel();
+    _downloadSubscription = _repository.downloadStateStream.listen((state) {
+      if (_isDisposed) return;
+      unawaited(_handleDownloadStateUpdate(state));
+    });
+  }
+
+  Future<void> _handleDownloadStateUpdate(ModelDownloadState state) async {
+    if (_isDisposed) return;
+    downloadState.value = state;
+
+    if (state.status.isActive) {
+      _didHandleDownloadCompletion = false;
+    }
+
+    if (state.status == ModelDownloadStatus.completed &&
+        !_didHandleDownloadCompletion) {
+      _didHandleDownloadCompletion = true;
+      loadErrorMessage.value = null;
+      if (selectedModelName.value.isEmpty) {
+        selectedModelName.value = state.modelName;
+      }
+      await refreshModels();
+    } else if (state.status == ModelDownloadStatus.error &&
+        state.errorMessage != null) {
+      loadErrorMessage.value =
+          'Falha ao baixar o modelo: ${state.errorMessage}';
+    }
+  }
+
+  /// Detaches UI subscriptions without cancelling active background downloads.
+  void dispose() {
+    _isDisposed = true;
+    _downloadSubscription?.cancel();
+    _downloadSubscription = null;
   }
 
   void toggleServerEditor() {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
@@ -8,7 +9,18 @@ import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart
 import 'package:my_hero/src/features/chat/data/adapter/ollama_thinking_parser.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
+
+/// Exception thrown when the Ollama server explicitly rejects a `/api/pull` request.
+class OllamaPullServerException implements Exception {
+  final String message;
+
+  const OllamaPullServerException(this.message);
+
+  @override
+  String toString() => message;
+}
 
 /// Remote datasource communicating with the Ollama HTTP API.
 abstract class OllamaRemoteDatasource {
@@ -26,13 +38,16 @@ abstract class OllamaRemoteDatasource {
     int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   });
+  Stream<ModelDownloadState> pullModel(String modelName);
   void stopGeneration();
+  void cancelModelPull();
   void close();
 }
 
 class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   final DioClient _dioClient;
-  CancelToken? _currentCancelToken;
+  CancelToken? _chatCancelToken;
+  CancelToken? _pullCancelToken;
   String _baseUrl;
 
   OllamaRemoteDatasourceImpl(this._dioClient, {String? baseUrl})
@@ -201,9 +216,9 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
     int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   }) async* {
-    _currentCancelToken?.cancel();
+    _chatCancelToken?.cancel();
     final cancelToken = CancelToken();
-    _currentCancelToken = cancelToken;
+    _chatCancelToken = cancelToken;
 
     final response = await _dioClient.dio.post<ResponseBody>(
       '$_baseUrl/api/chat',
@@ -267,13 +282,106 @@ class OllamaRemoteDatasourceImpl implements OllamaRemoteDatasource {
   }
 
   @override
+  Stream<ModelDownloadState> pullModel(String modelName) async* {
+    _pullCancelToken?.cancel('Replaced by new model pull');
+    final cancelToken = CancelToken();
+    _pullCancelToken = cancelToken;
+
+    final response = await _dioClient.dio.post<ResponseBody>(
+      '$_baseUrl/api/pull',
+      data: {
+        'model': modelName,
+        'stream': true,
+      },
+      options: Options(
+        responseType: ResponseType.stream,
+        sendTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 30),
+      ),
+      cancelToken: cancelToken,
+    );
+
+    final stream = response.data?.stream;
+    if (stream == null) {
+      throw const HttpException('Empty response stream from /api/pull.');
+    }
+
+    var receivedSuccess = false;
+    final lineStream = stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+
+    await for (final line in lineStream) {
+      if (cancelToken.isCancelled) break;
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      final Map<String, dynamic> json;
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is! Map<String, dynamic>) continue;
+        json = decoded;
+      } catch (_) {
+        // Ignore malformed NDJSON chunks.
+        continue;
+      }
+
+      final error = json['error'] as String?;
+      if (error != null && error.trim().isNotEmpty) {
+        throw OllamaPullServerException(error.trim());
+      }
+
+      final status = (json['status'] as String? ?? '').trim();
+      final total = (json['total'] as num?)?.toInt() ?? 0;
+      final completed = (json['completed'] as num?)?.toInt() ?? 0;
+
+      if (status == 'success') {
+        receivedSuccess = true;
+        yield ModelDownloadState(
+          modelName: modelName,
+          status: ModelDownloadStatus.completed,
+          statusMessage: 'Modelo "$modelName" baixado com sucesso!',
+          completedBytes: total > 0 ? total : completed,
+          totalBytes: total,
+        );
+      } else {
+        yield ModelDownloadState(
+          modelName: modelName,
+          status: ModelDownloadStatus.downloading,
+          statusMessage: status.isNotEmpty ? status : 'Baixando modelo...',
+          completedBytes: completed,
+          totalBytes: total,
+        );
+      }
+    }
+
+    if (cancelToken.isCancelled) {
+      return;
+    }
+
+    if (!receivedSuccess) {
+      throw const HttpException(
+        'Connection closed before model download completed.',
+      );
+    }
+  }
+
+  @override
   void stopGeneration() {
-    _currentCancelToken?.cancel('Interrompido pelo usuário');
-    _currentCancelToken = null;
+    _chatCancelToken?.cancel('Cancelled by user');
+    _chatCancelToken = null;
+  }
+
+  @override
+  void cancelModelPull() {
+    _pullCancelToken?.cancel('Cancelled by user');
+    _pullCancelToken = null;
   }
 
   @override
   void close() {
     stopGeneration();
+    cancelModelPull();
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
-/// Card section displaying the Ollama model dropdown, refresh button, and memory load control.
+/// Card section displaying the Ollama model dropdown, refresh button,
+/// model download (`/api/pull`) controls, and memory load control.
 class OllamaModelSection extends StatelessWidget {
   final bool isConnected;
   final String serverUrl;
@@ -13,9 +15,13 @@ class OllamaModelSection extends StatelessWidget {
   final String loadingStatus;
   final String? loadErrorMessage;
   final bool isModelLoaded;
+  final ModelDownloadState downloadState;
+  final TextEditingController? pullModelController;
   final VoidCallback onRefreshModels;
   final ValueChanged<String> onModelSelected;
   final VoidCallback onLoadModel;
+  final ValueChanged<String>? onDownloadModel;
+  final VoidCallback? onCancelDownload;
 
   const OllamaModelSection({
     super.key,
@@ -29,9 +35,13 @@ class OllamaModelSection extends StatelessWidget {
     required this.loadingStatus,
     required this.loadErrorMessage,
     required this.isModelLoaded,
+    this.downloadState = const ModelDownloadState.idle(),
+    this.pullModelController,
     required this.onRefreshModels,
     required this.onModelSelected,
     required this.onLoadModel,
+    this.onDownloadModel,
+    this.onCancelDownload,
   });
 
   @override
@@ -82,10 +92,14 @@ class OllamaModelSection extends StatelessWidget {
             const SizedBox(height: 12),
             if (!isConnected)
               _buildDisconnectedState(theme)
-            else if (models.isEmpty)
-              _buildEmptyState()
-            else
-              _buildModelControls(theme),
+            else ...[
+              if (models.isEmpty)
+                _buildEmptyState()
+              else
+                _buildModelControls(theme),
+              const Divider(height: 24),
+              _buildModelPullSection(theme),
+            ],
             if (loadErrorMessage != null) ...[
               const SizedBox(height: 12),
               _buildErrorBanner(theme, loadErrorMessage!),
@@ -152,7 +166,7 @@ class OllamaModelSection extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Você pode baixar um modelo usando seu terminal:\nEx: ollama pull llama3.2 ou ollama pull deepseek-r1:8b',
+          'Baixe um modelo diretamente abaixo ou pelo terminal (ex: llama3.2:3b).',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
@@ -327,6 +341,118 @@ class OllamaModelSection extends StatelessWidget {
             loadingStatus,
             style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
           ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildModelPullSection(ThemeData theme) {
+    final isDownloading = downloadState.isActive;
+    final percent = downloadState.progressPercent;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!isDownloading) ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('pull_model_name_field'),
+                  controller: pullModelController,
+                  enabled: onDownloadModel != null,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    labelText: 'Baixar novo modelo',
+                    hintText: 'Ex: llama3.2:3b',
+                    filled: true,
+                    fillColor: theme.colorScheme.surface,
+                  ),
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      onDownloadModel?.call(value.trim());
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonalIcon(
+                key: const Key('pull_model_button'),
+                onPressed: onDownloadModel == null
+                    ? null
+                    : () {
+                        final target = pullModelController?.text.trim() ?? '';
+                        if (target.isNotEmpty) {
+                          onDownloadModel!(target);
+                        }
+                      },
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Baixar'),
+              ),
+            ],
+          ),
+          if (downloadState.status == ModelDownloadStatus.completed &&
+              downloadState.statusMessage.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              downloadState.statusMessage,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.green,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else if (downloadState.status == ModelDownloadStatus.cancelled &&
+              downloadState.statusMessage.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              downloadState.statusMessage,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ] else ...[
+          Row(
+            children: [
+              const Icon(Icons.downloading, color: Colors.teal, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  percent != null
+                      ? 'Baixando ${downloadState.modelName}: $percent%'
+                      : 'Baixando ${downloadState.modelName}...',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                key: const Key('cancel_model_download_button'),
+                onPressed: onCancelDownload,
+                icon: const Icon(Icons.close, size: 16),
+                label: const Text('Cancelar'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            value: downloadState.totalBytes > 0 ? downloadState.progress : null,
+          ),
+          if (downloadState.statusMessage.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              downloadState.statusMessage,
+              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
         ],
       ],
     );

@@ -29,6 +29,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsController _controller;
   late final TextEditingController _hostController;
   late final TextEditingController _memoryLimitController;
+  late final TextEditingController _pullModelController;
   bool _isSaving = false;
 
   String _formatMemoryText(double? gb) {
@@ -44,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _controller = widget.controller ?? GetIt.I<SettingsController>();
     _hostController = TextEditingController();
     _memoryLimitController = TextEditingController();
+    _pullModelController = TextEditingController();
     _controller.init(widget.initialArgs).then((_) {
       if (mounted) {
         _hostController.text = _controller.ollamaBaseUrl.value;
@@ -58,8 +60,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _controller.dispose();
     _hostController.dispose();
     _memoryLimitController.dispose();
+    _pullModelController.dispose();
     super.dispose();
   }
 
@@ -155,6 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final loadingStatus = _controller.loadingStatus.value;
                         final loadError = _controller.loadErrorMessage.value;
                         final isModelLoaded = _controller.isModelLoaded.value;
+                        final downloadState = _controller.downloadState.value;
                         final selectedStyle = _controller.responseStyle.value;
                         final selectedContextMode =
                             _controller.contextMode.value;
@@ -188,9 +193,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               loadingStatus: loadingStatus,
                               loadErrorMessage: loadError,
                               isModelLoaded: isModelLoaded,
+                              downloadState: downloadState,
+                              pullModelController: _pullModelController,
                               onRefreshModels: _controller.refreshModels,
                               onModelSelected: _controller.selectModel,
                               onLoadModel: _controller.loadModelIntoMemory,
+                              onDownloadModel: _controller.downloadModel,
+                              onCancelDownload: _controller.cancelModelDownload,
                             ),
                             const SizedBox(height: 12),
                             ResponseStyleSection(

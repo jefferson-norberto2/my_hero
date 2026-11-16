@@ -1,17 +1,20 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
-import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
-import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
+import 'package:my_hero/src/features/chat/data/services/foreground_task_manager.dart';
+import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
+import 'package:my_hero/src/shared/models/ollama_model.dart';
+import 'package:my_hero/src/shared/models/response_style.dart';
 
 class MockOllamaRemoteDatasource extends Mock implements OllamaRemoteDatasource {}
 class MockChatHistoryDatasource extends Mock implements ChatHistoryDatasource {}
+class MockForegroundTaskManager extends Mock implements ForegroundTaskManager {}
 
 void main() {
   late MockOllamaRemoteDatasource mockOllamaDatasource;
@@ -296,6 +299,109 @@ void main() {
           numCtx: 16384,
         ),
       ).called(1);
+    });
+  });
+
+  group('ChatRepositoryImpl - Foreground Service & Decoupled Stream', () {
+    late MockForegroundTaskManager mockForegroundManager;
+    late ChatRepositoryImpl managedRepository;
+
+    setUp(() {
+      mockForegroundManager = MockForegroundTaskManager();
+      when(() => mockForegroundManager.beginChatGeneration())
+          .thenAnswer((_) async {});
+      when(() => mockForegroundManager.endChatGeneration())
+          .thenAnswer((_) async {});
+      when(() => mockOllamaDatasource.stopGeneration()).thenReturn(null);
+
+      managedRepository = ChatRepositoryImpl(
+        ollamaDatasource: mockOllamaDatasource,
+        historyDatasource: mockHistoryDatasource,
+        foregroundTaskManager: mockForegroundManager,
+      );
+    });
+
+    test('starts foreground service on sendMessage and stops when stream completes', () async {
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer(
+        (_) => Stream.fromIterable(const [
+          ChatStreamChunk(contentDelta: 'Hello', isDone: true),
+        ]),
+      );
+
+      final chunks = await managedRepository.sendMessage(
+        text: 'Hi',
+        modelName: 'llama3.2:3b',
+        history: const [],
+      ).toList();
+
+      expect(chunks.length, 1);
+      verify(() => mockForegroundManager.beginChatGeneration()).called(1);
+      verify(() => mockForegroundManager.endChatGeneration()).called(1);
+    });
+
+    test('stops foreground service when stream fails with an error', () async {
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => Stream<ChatStreamChunk>.error(StateError('Socket lost')));
+
+      await expectLater(
+        managedRepository.sendMessage(
+          text: 'Hi',
+          modelName: 'llama3.2:3b',
+          history: const [],
+        ).toList(),
+        throwsA(isA<StateError>()),
+      );
+
+      verify(() => mockForegroundManager.beginChatGeneration()).called(1);
+      verify(() => mockForegroundManager.endChatGeneration()).called(1);
+    });
+
+    test('keeps upstream stream running if downstream listener cancels and ends service on stopGeneration', () async {
+      final upstreamController = StreamController<ChatStreamChunk>();
+      when(
+        () => mockOllamaDatasource.generateChatResponseAsync(
+          modelName: 'llama3.2:3b',
+          messages: any(named: 'messages'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => upstreamController.stream);
+
+      final sub = managedRepository
+          .sendMessage(
+            text: 'Hi',
+            modelName: 'llama3.2:3b',
+            history: const [],
+          )
+          .listen((_) {});
+
+      await Future<void>.delayed(Duration.zero);
+      verify(() => mockForegroundManager.beginChatGeneration()).called(1);
+
+      // Simulate UI listener detaching without calling stopGeneration().
+      await sub.cancel();
+      expect(upstreamController.hasListener, isTrue);
+      verifyNever(() => mockForegroundManager.endChatGeneration());
+
+      managedRepository.stopGeneration();
+      await Future<void>.delayed(Duration.zero);
+
+      verify(() => mockOllamaDatasource.stopGeneration()).called(1);
+      verify(() => mockForegroundManager.endChatGeneration()).called(1);
+      await upstreamController.close();
     });
   });
 }

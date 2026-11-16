@@ -12,6 +12,7 @@ import 'package:my_hero/src/features/settings/controller/settings_controller.dar
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
@@ -78,6 +79,10 @@ void main() {
         .thenAnswer((_) async => true);
     when(() => mockSettingsRepo.getAvailableModels())
         .thenAnswer((_) async => [loadedModel]);
+    when(() => mockSettingsRepo.currentDownloadState)
+        .thenReturn(const ModelDownloadState.idle());
+    when(() => mockSettingsRepo.downloadStateStream)
+        .thenAnswer((_) => const Stream<ModelDownloadState>.empty());
 
     chatController = ChatController(
       repository: mockChatRepo,

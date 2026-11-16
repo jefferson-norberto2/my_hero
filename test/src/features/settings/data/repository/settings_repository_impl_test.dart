@@ -3,7 +3,9 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository_impl.dart';
+import 'package:my_hero/src/features/settings/data/services/model_download_service.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 class MockOllamaRemoteDatasource extends Mock
@@ -11,19 +13,24 @@ class MockOllamaRemoteDatasource extends Mock
 
 class MockSettingsDatasource extends Mock implements SettingsDatasource {}
 
+class MockModelDownloadService extends Mock implements ModelDownloadService {}
+
 void main() {
   late MockOllamaRemoteDatasource mockOllamaDatasource;
   late MockSettingsDatasource mockSettingsDatasource;
+  late MockModelDownloadService mockModelDownloadService;
   late SettingsRepositoryImpl repository;
 
   setUp(() {
     mockOllamaDatasource = MockOllamaRemoteDatasource();
     mockSettingsDatasource = MockSettingsDatasource();
+    mockModelDownloadService = MockModelDownloadService();
     when(() => mockOllamaDatasource.baseUrl)
         .thenReturn('http://localhost:11434');
     repository = SettingsRepositoryImpl(
       ollamaDatasource: mockOllamaDatasource,
       settingsDatasource: mockSettingsDatasource,
+      modelDownloadService: mockModelDownloadService,
     );
   });
 
@@ -131,6 +138,31 @@ void main() {
           .called(1);
       verify(() => mockSettingsDatasource.saveServerMemoryLimitGb(64.0))
           .called(1);
+    });
+
+    test('downloadModel, cancelModelDownload, and state stream delegate to ModelDownloadService', () async {
+      const completed = ModelDownloadState(
+        modelName: 'llama3.2:3b',
+        status: ModelDownloadStatus.completed,
+        completedBytes: 100,
+        totalBytes: 100,
+      );
+      when(() => mockModelDownloadService.currentState).thenReturn(completed);
+      when(() => mockModelDownloadService.stateStream)
+          .thenAnswer((_) => Stream.value(completed));
+      when(() => mockModelDownloadService.downloadModel('llama3.2:3b'))
+          .thenAnswer((_) async => completed);
+      when(() => mockModelDownloadService.cancelDownload())
+          .thenAnswer((_) async {});
+
+      expect(repository.currentDownloadState, completed);
+      expect(await repository.downloadStateStream.first, completed);
+      expect(await repository.downloadModel('llama3.2:3b'), completed);
+      await repository.cancelModelDownload();
+
+      verify(() => mockModelDownloadService.downloadModel('llama3.2:3b'))
+          .called(1);
+      verify(() => mockModelDownloadService.cancelDownload()).called(1);
     });
   });
 }

@@ -8,10 +8,12 @@ import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
 import 'package:my_hero/src/features/chat/data/services/aes_gcm_encryption_service.dart';
 import 'package:my_hero/src/features/chat/data/services/encryption_key_manager.dart';
+import 'package:my_hero/src/features/chat/data/services/foreground_task_manager.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository_impl.dart';
+import 'package:my_hero/src/features/settings/data/services/model_download_service.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 final getIt = GetIt.instance;
@@ -34,6 +36,9 @@ Future<void> setupDependencies() async {
   );
 
   // Features - Chat - Data
+  getIt.registerLazySingleton<ForegroundTaskManager>(
+    () => ForegroundTaskManager(),
+  );
   getIt.registerLazySingleton<EncryptionKeyManager>(
     () => EncryptionKeyManager(secureStorage: getIt<FlutterSecureStorage>()),
   );
@@ -48,10 +53,17 @@ Future<void> setupDependencies() async {
       encryptionService: getIt<AesGcmEncryptionService>(),
     ),
   );
+  getIt.registerLazySingleton<ModelDownloadService>(
+    () => ModelDownloadService(
+      ollamaDatasource: getIt<OllamaRemoteDatasource>(),
+      foregroundTaskManager: getIt<ForegroundTaskManager>(),
+    ),
+  );
   getIt.registerLazySingleton<SettingsRepository>(
     () => SettingsRepositoryImpl(
       ollamaDatasource: getIt<OllamaRemoteDatasource>(),
       settingsDatasource: getIt<SettingsDatasource>(),
+      modelDownloadService: getIt<ModelDownloadService>(),
     ),
   );
   getIt.registerLazySingleton<ChatRepository>(
@@ -59,6 +71,7 @@ Future<void> setupDependencies() async {
       ollamaDatasource: getIt<OllamaRemoteDatasource>(),
       historyDatasource: getIt<ChatHistoryDatasource>(),
       settingsDatasource: getIt<SettingsDatasource>(),
+      foregroundTaskManager: getIt<ForegroundTaskManager>(),
     ),
   );
 
@@ -74,6 +87,9 @@ Future<void> setupDependencies() async {
       mediaPickerService: getIt<MediaPickerService>(),
     ),
   );
+
+  // Initialize Android foreground task configuration (no-op on desktop platforms).
+  await getIt<ForegroundTaskManager>().initialize();
 
   // Initialize encrypted conversation storage and migrate any legacy JSON files.
   try {

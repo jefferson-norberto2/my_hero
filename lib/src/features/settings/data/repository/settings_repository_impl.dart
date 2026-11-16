@@ -1,19 +1,25 @@
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
+import 'package:my_hero/src/features/settings/data/services/model_download_service.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
 /// Default [SettingsRepository] implementation delegating to remote and local datasources.
 class SettingsRepositoryImpl implements SettingsRepository {
   final OllamaRemoteDatasource _ollamaDatasource;
   final SettingsDatasource _settingsDatasource;
+  final ModelDownloadService _modelDownloadService;
 
   SettingsRepositoryImpl({
     required OllamaRemoteDatasource ollamaDatasource,
     required SettingsDatasource settingsDatasource,
+    ModelDownloadService? modelDownloadService,
   })  : _ollamaDatasource = ollamaDatasource,
-        _settingsDatasource = settingsDatasource;
+        _settingsDatasource = settingsDatasource,
+        _modelDownloadService = modelDownloadService ??
+            ModelDownloadService(ollamaDatasource: ollamaDatasource);
 
   @override
   String get ollamaBaseUrl => _ollamaDatasource.baseUrl;
@@ -97,5 +103,23 @@ class SettingsRepositoryImpl implements SettingsRepository {
     onProgress(0.5, 'Carregando "$modelName" na memória...');
     await _ollamaDatasource.preloadModel(modelName);
     onProgress(1.0, 'Modelo "$modelName" pronto!');
+  }
+
+  @override
+  ModelDownloadState get currentDownloadState =>
+      _modelDownloadService.currentState;
+
+  @override
+  Stream<ModelDownloadState> get downloadStateStream =>
+      _modelDownloadService.stateStream;
+
+  @override
+  Future<ModelDownloadState> downloadModel(String modelName) {
+    return _modelDownloadService.downloadModel(modelName);
+  }
+
+  @override
+  Future<void> cancelModelDownload() {
+    return _modelDownloadService.cancelDownload();
   }
 }

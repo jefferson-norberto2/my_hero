@@ -640,4 +640,117 @@ void main() {
       expect(capturedNumCtx, [4096, 4096]);
     });
   });
+
+  group('ChatController - Incremental Persistence & Background Resilience', () {
+    test('persists partial assistant response incrementally mid-stream before completion', () async {
+      final incrementalController = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        incrementalSaveInterval: Duration.zero,
+      )..selectedModelName.value = 'llama3.2:3b';
+
+      await incrementalController.createNewConversation();
+      incrementalController.isModelLoaded.value = true;
+
+      final streamController = StreamController<ChatStreamChunk>();
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => streamController.stream);
+
+      final savedSnapshots = <String>[];
+      when(() => mockRepository.saveConversations(any())).thenAnswer((invocation) async {
+        final list = invocation.positionalArguments.first as List<dynamic>;
+        if (list.isNotEmpty && list.first.messages.isNotEmpty) {
+          savedSnapshots.add(list.first.messages.last.content as String);
+        }
+      });
+
+      final sendFuture = incrementalController.sendMessage('Count slowly');
+      await Future<void>.delayed(Duration.zero);
+
+      streamController.add(const ChatStreamChunk(contentDelta: 'Part 1 '));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(savedSnapshots, contains('Part 1 '));
+
+      streamController.add(
+        const ChatStreamChunk(contentDelta: 'Part 2', isDone: true),
+      );
+      await streamController.close();
+      await sendFuture;
+
+      expect(savedSnapshots.last, 'Part 1 Part 2');
+    });
+
+    test('preserves and saves partial assistant text when stream errors mid-response', () async {
+      await controller.createNewConversation();
+      controller.isModelLoaded.value = true;
+
+      final streamController = StreamController<ChatStreamChunk>();
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+          attachment: any(named: 'attachment'),
+          modelName: any(named: 'modelName'),
+          history: any(named: 'history'),
+          responseStyle: any(named: 'responseStyle'),
+          numCtx: any(named: 'numCtx'),
+          onMetrics: any(named: 'onMetrics'),
+        ),
+      ).thenAnswer((_) => streamController.stream);
+
+      final sendFuture = controller.sendMessage('Explain');
+      await Future<void>.delayed(Duration.zero);
+
+      streamController.add(
+        const ChatStreamChunk(
+          thinkingDelta: 'Initial thought',
+          isThinking: true,
+        ),
+      );
+      streamController.add(
+        const ChatStreamChunk(
+          contentDelta: 'Partial valid answer',
+          isThinking: false,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      streamController.addError(StateError('Connection dropped'));
+      await streamController.close();
+      await sendFuture;
+
+      expect(controller.chatHistory.value.length, 3);
+      expect(
+        controller.chatHistory.value[1].thinkingContent,
+        'Initial thought',
+      );
+      expect(
+        controller.chatHistory.value[1].content,
+        'Partial valid answer',
+      );
+      expect(controller.chatHistory.value[1].isThinking, isFalse);
+      expect(
+        controller.chatHistory.value[2].content,
+        contains('Sistema: Erro ao gerar resposta'),
+      );
+      verify(() => mockRepository.saveConversations(any())).called(greaterThan(1));
+    });
+
+    test('dispose does not cancel ongoing chat generation', () {
+      controller.dispose();
+      verifyNever(() => mockRepository.reset());
+      verifyNever(() => mockRepository.stopGeneration());
+    });
+  });
 }

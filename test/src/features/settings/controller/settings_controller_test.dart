@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -48,6 +50,10 @@ void main() {
         .thenAnswer((_) async => true);
     when(() => mockRepository.getAvailableModels())
         .thenAnswer((_) async => [modelA, modelB]);
+    when(() => mockRepository.currentDownloadState)
+        .thenReturn(const ModelDownloadState.idle());
+    when(() => mockRepository.downloadStateStream)
+        .thenAnswer((_) => const Stream<ModelDownloadState>.empty());
 
     controller = SettingsController(repository: mockRepository);
   });
@@ -218,6 +224,78 @@ void main() {
       verify(() => mockRepository.saveContextMode(ContextMode.manual)).called(1);
       verify(() => mockRepository.saveManualContextLength(16384)).called(1);
       verify(() => mockRepository.saveServerMemoryLimitGb(32.0)).called(1);
+    });
+
+    test('downloadModel tracks repository download stream and refreshes models on completion', () async {
+      final downloadStreamController =
+          StreamController<ModelDownloadState>.broadcast();
+      const downloadedModel = OllamaModel(
+        name: 'gemma3:4b',
+        model: 'gemma3:4b',
+        size: 3000000000,
+      );
+      when(() => mockRepository.downloadStateStream)
+          .thenAnswer((_) => downloadStreamController.stream);
+      when(() => mockRepository.getAvailableModels())
+          .thenAnswer((_) async => [modelA, modelB, downloadedModel]);
+      when(() => mockRepository.downloadModel('gemma3:4b')).thenAnswer((_) async {
+        const active = ModelDownloadState(
+          modelName: 'gemma3:4b',
+          status: ModelDownloadStatus.downloading,
+          statusMessage: 'downloading layer',
+          completedBytes: 50,
+          totalBytes: 100,
+        );
+        downloadStreamController.add(active);
+        const done = ModelDownloadState(
+          modelName: 'gemma3:4b',
+          status: ModelDownloadStatus.completed,
+          statusMessage: 'Modelo "gemma3:4b" baixado com sucesso!',
+          completedBytes: 100,
+          totalBytes: 100,
+        );
+        downloadStreamController.add(done);
+        return done;
+      });
+
+      await controller.init(
+        const SettingsArgs(
+          selectedModelName: '',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [],
+        ),
+      );
+
+      await controller.downloadModel('gemma3:4b');
+
+      expect(controller.downloadState.value.status, ModelDownloadStatus.completed);
+      expect(controller.selectedModelName.value, 'gemma3:4b');
+      verify(() => mockRepository.getAvailableModels()).called(1);
+      await downloadStreamController.close();
+    });
+
+    test('init binds existing active download state and dispose does not cancel repository download', () async {
+      const ongoing = ModelDownloadState(
+        modelName: 'qwen2.5:7b',
+        status: ModelDownloadStatus.downloading,
+        statusMessage: 'downloading',
+        completedBytes: 40,
+        totalBytes: 100,
+      );
+      when(() => mockRepository.currentDownloadState).thenReturn(ongoing);
+
+      await controller.init(
+        const SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [modelA],
+        ),
+      );
+
+      expect(controller.downloadState.value, ongoing);
+
+      controller.dispose();
+      verifyNever(() => mockRepository.cancelModelDownload());
     });
   });
 }

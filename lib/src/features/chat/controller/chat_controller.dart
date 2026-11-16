@@ -20,14 +20,19 @@ import 'package:signals_flutter/signals_flutter.dart';
 
 /// Manages reactive state and business logic for the chat screen.
 class ChatController {
+  static const Duration defaultIncrementalSaveInterval = Duration(seconds: 1);
+
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
+  final Duration _incrementalSaveInterval;
 
   ChatController({
     required ChatRepository repository,
     required MediaPickerService mediaPickerService,
+    Duration incrementalSaveInterval = defaultIncrementalSaveInterval,
   })  : _repository = repository,
-        _mediaPickerService = mediaPickerService;
+        _mediaPickerService = mediaPickerService,
+        _incrementalSaveInterval = incrementalSaveInterval;
 
   // Reactive state signals
   final ollamaBaseUrl = signal<String>(AppConstants.ollamaBaseUrl);
@@ -698,6 +703,11 @@ class ChatController {
       conv.activeNumCtx = activeNumCtx;
     }
 
+    final targetConversationId = currentConversationId.value;
+    final assistantMessageIndex = chatHistory.value.length - 1;
+    var lastSavedAt = DateTime.now();
+    var hasUnsavedDelta = false;
+
     try {
       final stream = _repository.sendMessage(
         text: promptToSend,
@@ -725,38 +735,87 @@ class ChatController {
         if (_stopGenerationFlag) break;
 
         final currentList = List<ChatMessage>.from(chatHistory.value);
-        final lastIndex = currentList.length - 1;
-        final lastMsg = currentList[lastIndex];
+        if (assistantMessageIndex < 0 ||
+            assistantMessageIndex >= currentList.length) {
+          break;
+        }
+        final lastMsg = currentList[assistantMessageIndex];
 
-        currentList[lastIndex] = lastMsg.copyWith(
+        currentList[assistantMessageIndex] = lastMsg.copyWith(
           thinkingContent: lastMsg.thinkingContent + chunk.thinkingDelta,
           content: lastMsg.content + chunk.contentDelta,
           isThinking: chunk.isDone ? false : chunk.isThinking,
         );
         chatHistory.value = currentList;
+
+        if (chunk.contentDelta.isNotEmpty || chunk.thinkingDelta.isNotEmpty) {
+          hasUnsavedDelta = true;
+        }
+
+        final now = DateTime.now();
+        if (hasUnsavedDelta &&
+            now.difference(lastSavedAt) >= _incrementalSaveInterval) {
+          lastSavedAt = now;
+          hasUnsavedDelta = false;
+          _syncMessagesToConversation(targetConversationId, currentList);
+          await _saveCurrentState();
+        }
       }
     } catch (e) {
       if (!_stopGenerationFlag) {
         final currentList = List<ChatMessage>.from(chatHistory.value);
-        final lastIndex = currentList.length - 1;
-        currentList[lastIndex] = currentList[lastIndex].copyWith(
-          content: 'Sistema: Erro ao gerar resposta ($e)',
-          isThinking: false,
-        );
-        chatHistory.value = currentList;
+        if (assistantMessageIndex >= 0 &&
+            assistantMessageIndex < currentList.length) {
+          final partialMsg = currentList[assistantMessageIndex];
+          final hasPartialContent = partialMsg.content.trim().isNotEmpty ||
+              partialMsg.thinkingContent.trim().isNotEmpty;
+          if (hasPartialContent) {
+            currentList[assistantMessageIndex] = partialMsg.copyWith(
+              isThinking: false,
+            );
+            currentList.add(
+              ChatMessage(
+                text: 'Sistema: Erro ao gerar resposta ($e)',
+                isUser: false,
+              ),
+            );
+          } else {
+            currentList[assistantMessageIndex] = partialMsg.copyWith(
+              content: 'Sistema: Erro ao gerar resposta ($e)',
+              isThinking: false,
+            );
+          }
+          chatHistory.value = currentList;
+        }
       }
     } finally {
       final currentList = List<ChatMessage>.from(chatHistory.value);
-      if (currentList.isNotEmpty && currentList.last.isThinking) {
-        final lastIndex = currentList.length - 1;
-        currentList[lastIndex] = currentList[lastIndex].copyWith(
-          isThinking: false,
-        );
+      if (assistantMessageIndex >= 0 &&
+          assistantMessageIndex < currentList.length &&
+          currentList[assistantMessageIndex].isThinking) {
+        currentList[assistantMessageIndex] =
+            currentList[assistantMessageIndex].copyWith(isThinking: false);
         chatHistory.value = currentList;
       }
       isGenerating.value = false;
-      _syncMessagesToCurrentConversation();
+      _syncMessagesToConversation(targetConversationId, currentList);
       await _saveCurrentState();
+    }
+  }
+
+  void _syncMessagesToConversation(
+    String? conversationId,
+    List<ChatMessage> messages,
+  ) {
+    if (conversationId == null) {
+      _syncMessagesToCurrentConversation();
+      return;
+    }
+    final conv =
+        conversations.value.where((c) => c.id == conversationId).firstOrNull;
+    if (conv != null) {
+      conv.messages = List.from(messages);
+      conv.updatedAt = DateTime.now();
     }
   }
 
@@ -796,6 +855,6 @@ class ChatController {
   }
 
   void dispose() {
-    _repository.reset();
+    // Keep active streams in the data layer running if the UI widget unmounts.
   }
 }

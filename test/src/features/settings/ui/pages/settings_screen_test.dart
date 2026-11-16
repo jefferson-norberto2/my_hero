@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
@@ -52,6 +54,10 @@ void main() {
         .thenAnswer((_) async => true);
     when(() => mockRepository.getAvailableModels())
         .thenAnswer((_) async => [modelUnloaded, modelLoaded]);
+    when(() => mockRepository.currentDownloadState)
+        .thenReturn(const ModelDownloadState.idle());
+    when(() => mockRepository.downloadStateStream)
+        .thenAnswer((_) => const Stream<ModelDownloadState>.empty());
 
     controller = SettingsController(repository: mockRepository);
   });
@@ -362,6 +368,73 @@ void main() {
       expect(capturedResult!.contextMode, ContextMode.manual);
       expect(capturedResult!.manualContextLength, 16384);
       expect(capturedResult!.serverMemoryLimitGb, 32.0);
+    });
+
+    testWidgets('displays model pull controls, live progress, and cancel button', (tester) async {
+      final streamCtrl = StreamController<ModelDownloadState>.broadcast();
+      final completer = Completer<ModelDownloadState>();
+      when(() => mockRepository.downloadStateStream)
+          .thenAnswer((_) => streamCtrl.stream);
+      when(() => mockRepository.downloadModel('llama3.2:3b'))
+          .thenAnswer((_) => completer.future);
+      when(() => mockRepository.cancelModelDownload()).thenAnswer((_) async {
+        const cancelled = ModelDownloadState(
+          modelName: 'llama3.2:3b',
+          status: ModelDownloadStatus.cancelled,
+          statusMessage: 'Download de llama3.2:3b cancelado.',
+        );
+        streamCtrl.add(cancelled);
+        if (!completer.isCompleted) {
+          completer.complete(cancelled);
+        }
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: SettingsScreen(
+            initialArgs: const SettingsArgs(
+              selectedModelName: 'mimo-v2.6:9b',
+              responseStyle: ResponseStyle.simple,
+              ollamaBaseUrl: 'http://localhost:11434',
+              availableModels: [modelUnloaded],
+            ),
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('pull_model_name_field')),
+        'llama3.2:3b',
+      );
+      await tester.tap(find.byKey(const Key('pull_model_button')));
+      await tester.pump();
+
+      streamCtrl.add(
+        const ModelDownloadState(
+          modelName: 'llama3.2:3b',
+          status: ModelDownloadStatus.downloading,
+          statusMessage: 'downloading digest',
+          completedBytes: 35,
+          totalBytes: 100,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Baixando llama3.2:3b: 35%'), findsOneWidget);
+      expect(
+        find.byKey(const Key('cancel_model_download_button')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('cancel_model_download_button')));
+      await tester.pumpAndSettle();
+
+      verify(() => mockRepository.cancelModelDownload()).called(1);
+      expect(find.text('Download de llama3.2:3b cancelado.'), findsOneWidget);
+      await streamCtrl.close();
     });
   });
 }

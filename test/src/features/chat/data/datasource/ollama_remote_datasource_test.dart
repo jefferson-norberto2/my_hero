@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:my_hero/src/core/network/dio_client.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
+import 'package:my_hero/src/shared/models/model_download_state.dart';
 
 class MockDio extends Mock implements Dio {}
 
@@ -488,6 +490,157 @@ void main() {
 
       final payload = captured.single as Map<String, dynamic>;
       expect(payload['options'], {'num_ctx': 16384});
+    });
+
+    test('pullModel posts to /api/pull and emits progress and completion states', () async {
+      final jsonLines = [
+        '{"status": "pulling manifest"}\n',
+        '{"status": "downloading sha256:abc", "total": 200, "completed": 70}\n',
+        '{"status": "success"}\n',
+      ];
+      final byteStream = Stream.fromIterable(
+        jsonLines.map((l) => Uint8List.fromList(utf8.encode(l))),
+      );
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/pull')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<ResponseBody>(
+          data: ResponseBody(byteStream, 200),
+          requestOptions: RequestOptions(path: '/api/pull'),
+          statusCode: 200,
+        ),
+      );
+
+      final states = await datasource.pullModel('llama3.2:3b').toList();
+
+      expect(states.length, 3);
+      expect(states[0].status, ModelDownloadStatus.downloading);
+      expect(states[1].progressPercent, 35);
+      expect(states[2].status, ModelDownloadStatus.completed);
+
+      verify(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/pull')),
+          data: {'model': 'llama3.2:3b', 'stream': true},
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).called(1);
+    });
+
+    test('pullModel throws OllamaPullServerException on explicit server error chunk', () async {
+      final byteStream = Stream.fromIterable([
+        Uint8List.fromList(
+          utf8.encode('{"error": "pull model manifest: file does not exist"}\n'),
+        ),
+      ]);
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/pull')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<ResponseBody>(
+          data: ResponseBody(byteStream, 200),
+          requestOptions: RequestOptions(path: '/api/pull'),
+          statusCode: 200,
+        ),
+      );
+
+      await expectLater(
+        datasource.pullModel('missing:model').toList(),
+        throwsA(isA<OllamaPullServerException>()),
+      );
+    });
+
+    test('pullModel throws HttpException when stream closes without success chunk', () async {
+      final byteStream = Stream.fromIterable([
+        Uint8List.fromList(
+          utf8.encode('{"status": "downloading", "total": 100, "completed": 40}\n'),
+        ),
+      ]);
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/pull')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer(
+        (_) async => Response<ResponseBody>(
+          data: ResponseBody(byteStream, 200),
+          requestOptions: RequestOptions(path: '/api/pull'),
+          statusCode: 200,
+        ),
+      );
+
+      await expectLater(
+        datasource.pullModel('llama3.2:3b').toList(),
+        throwsA(isA<HttpException>()),
+      );
+    });
+
+    test('cancelModelPull does not cancel an active chat generation token', () async {
+      CancelToken? chatToken;
+      CancelToken? pullToken;
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/chat')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((invocation) async {
+        chatToken = invocation.namedArguments[#cancelToken] as CancelToken?;
+        return Response<ResponseBody>(
+          data: ResponseBody(const Stream<Uint8List>.empty(), 200),
+          requestOptions: RequestOptions(path: '/api/chat'),
+          statusCode: 200,
+        );
+      });
+
+      when(
+        () => mockDio.post<ResponseBody>(
+          any(that: contains('/api/pull')),
+          data: any(named: 'data'),
+          options: any(named: 'options'),
+          cancelToken: any(named: 'cancelToken'),
+        ),
+      ).thenAnswer((invocation) async {
+        pullToken = invocation.namedArguments[#cancelToken] as CancelToken?;
+        return Response<ResponseBody>(
+          data: ResponseBody(
+            Stream.fromIterable([
+              Uint8List.fromList(utf8.encode('{"status": "success"}\n')),
+            ]),
+            200,
+          ),
+          requestOptions: RequestOptions(path: '/api/pull'),
+          statusCode: 200,
+        );
+      });
+
+      await datasource.generateChatResponseAsync(
+        modelName: 'llama3.2:3b',
+        messages: const [],
+      ).toList();
+      final pullFuture = datasource.pullModel('qwen2.5:7b').toList();
+      await pullFuture;
+
+      datasource.cancelModelPull();
+      expect(chatToken?.isCancelled, isFalse);
+      expect(pullToken, isNotNull);
     });
   });
 }

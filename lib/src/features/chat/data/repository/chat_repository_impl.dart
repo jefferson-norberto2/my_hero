@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
@@ -5,6 +6,7 @@ import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/chat/data/services/foreground_task_manager.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
@@ -16,14 +18,20 @@ class ChatRepositoryImpl implements ChatRepository {
   final OllamaRemoteDatasource _ollamaDatasource;
   final ChatHistoryDatasource _historyDatasource;
   final SettingsDatasource? _settingsDatasource;
+  final ForegroundTaskManager? _foregroundTaskManager;
+
+  StreamSubscription<ChatStreamChunk>? _activeChatSubscription;
+  StreamController<ChatStreamChunk>? _activeChatController;
 
   ChatRepositoryImpl({
     required OllamaRemoteDatasource ollamaDatasource,
     required ChatHistoryDatasource historyDatasource,
     SettingsDatasource? settingsDatasource,
+    ForegroundTaskManager? foregroundTaskManager,
   })  : _ollamaDatasource = ollamaDatasource,
         _historyDatasource = historyDatasource,
-        _settingsDatasource = settingsDatasource;
+        _settingsDatasource = settingsDatasource,
+        _foregroundTaskManager = foregroundTaskManager;
 
   @override
   String get ollamaBaseUrl => _ollamaDatasource.baseUrl;
@@ -134,7 +142,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }) {
     final messages = <Map<String, dynamic>>[];
 
-    // 2. Recent message history excluding internal app system banners.
+    // 1. Recent message history excluding internal app system banners.
     final relevantHistory = history
         .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
         .toList();
@@ -162,7 +170,7 @@ class ChatRepositoryImpl implements ChatRepository {
     );
     messages.add(ChatMessageAdapter.toOllamaMessage(userMessage));
 
-    return _ollamaDatasource.generateChatResponseAsync(
+    return _runManagedChatStream(
       modelName: modelName,
       messages: messages,
       numCtx: numCtx,
@@ -170,14 +178,121 @@ class ChatRepositoryImpl implements ChatRepository {
     );
   }
 
+  Stream<ChatStreamChunk> _runManagedChatStream({
+    required String modelName,
+    required List<Map<String, dynamic>> messages,
+    int? numCtx,
+    void Function(int promptTokens, int evalTokens)? onMetrics,
+  }) {
+    _disposePreviousActiveStream();
+
+    late final StreamController<ChatStreamChunk> controller;
+    controller = StreamController<ChatStreamChunk>(
+      onListen: () async {
+        await _foregroundTaskManager?.beginChatGeneration();
+        if (!identical(_activeChatController, controller) ||
+            controller.isClosed) {
+          await _foregroundTaskManager?.endChatGeneration();
+          return;
+        }
+
+        try {
+          final upstream = _ollamaDatasource.generateChatResponseAsync(
+            modelName: modelName,
+            messages: messages,
+            numCtx: numCtx,
+            onMetrics: onMetrics,
+          );
+
+          _activeChatSubscription = upstream.listen(
+            (chunk) {
+              if (!controller.isClosed) {
+                controller.add(chunk);
+              }
+            },
+            onError: (Object error, StackTrace stackTrace) async {
+              await _cleanupActiveChatGeneration(
+                controller,
+                error: error,
+                stackTrace: stackTrace,
+              );
+            },
+            onDone: () async {
+              await _cleanupActiveChatGeneration(controller);
+            },
+            cancelOnError: true,
+          );
+        } catch (error, stackTrace) {
+          await _cleanupActiveChatGeneration(
+            controller,
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      },
+      // Do not cancel the upstream HTTP stream if a UI listener detaches;
+      // only explicit stopGeneration(), completion, or error ends the request.
+    );
+
+    _activeChatController = controller;
+    return controller.stream;
+  }
+
+  void _disposePreviousActiveStream() {
+    final prevSub = _activeChatSubscription;
+    final prevCtrl = _activeChatController;
+    _activeChatSubscription = null;
+    _activeChatController = null;
+    if (prevSub != null) {
+      unawaited(prevSub.cancel());
+    }
+    if (prevCtrl != null && !prevCtrl.isClosed) {
+      unawaited(prevCtrl.close());
+    }
+  }
+
+  Future<void> _cleanupActiveChatGeneration(
+    StreamController<ChatStreamChunk> controller, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) async {
+    if (identical(_activeChatController, controller)) {
+      _activeChatSubscription = null;
+      _activeChatController = null;
+    }
+
+    await _foregroundTaskManager?.endChatGeneration();
+
+    if (!controller.isClosed) {
+      if (error != null) {
+        controller.addError(error, stackTrace);
+      }
+      await controller.close();
+    }
+  }
+
   @override
   void stopGeneration() {
     _ollamaDatasource.stopGeneration();
+    final sub = _activeChatSubscription;
+    final ctrl = _activeChatController;
+    _activeChatSubscription = null;
+    _activeChatController = null;
+
+    if (sub != null) {
+      unawaited(sub.cancel());
+    }
+    if (ctrl != null && !ctrl.isClosed) {
+      unawaited(ctrl.close());
+    }
+    if (_foregroundTaskManager != null) {
+      unawaited(_foregroundTaskManager.endChatGeneration());
+    }
   }
 
   @override
   void reset() {
-    _ollamaDatasource.stopGeneration();
+    stopGeneration();
   }
 
   @override

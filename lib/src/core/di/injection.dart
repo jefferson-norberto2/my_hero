@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
@@ -5,6 +6,8 @@ import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasourc
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
+import 'package:my_hero/src/features/chat/data/services/aes_gcm_encryption_service.dart';
+import 'package:my_hero/src/features/chat/data/services/encryption_key_manager.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
@@ -18,6 +21,12 @@ Future<void> setupDependencies() async {
   // Core & Shared
   getIt.registerLazySingleton<DioClient>(() => DioClient());
   getIt.registerLazySingleton<MediaPickerService>(() => MediaPickerService());
+  getIt.registerLazySingleton<FlutterSecureStorage>(
+    () => const FlutterSecureStorage(
+      aOptions: AndroidOptions(),
+      lOptions: LinuxOptions(),
+    ),
+  );
 
   // Features - Settings - Data
   getIt.registerLazySingleton<SettingsDatasource>(
@@ -25,11 +34,19 @@ Future<void> setupDependencies() async {
   );
 
   // Features - Chat - Data
+  getIt.registerLazySingleton<EncryptionKeyManager>(
+    () => EncryptionKeyManager(secureStorage: getIt<FlutterSecureStorage>()),
+  );
+  getIt.registerLazySingleton<AesGcmEncryptionService>(
+    () => AesGcmEncryptionService(keyManager: getIt<EncryptionKeyManager>()),
+  );
   getIt.registerLazySingleton<OllamaRemoteDatasource>(
     () => OllamaRemoteDatasourceImpl(getIt<DioClient>()),
   );
   getIt.registerLazySingleton<ChatHistoryDatasource>(
-    () => ChatHistoryDatasourceImpl(),
+    () => ChatHistoryDatasourceImpl(
+      encryptionService: getIt<AesGcmEncryptionService>(),
+    ),
   );
   getIt.registerLazySingleton<SettingsRepository>(
     () => SettingsRepositoryImpl(
@@ -57,4 +74,11 @@ Future<void> setupDependencies() async {
       mediaPickerService: getIt<MediaPickerService>(),
     ),
   );
+
+  // Initialize encrypted conversation storage and migrate any legacy JSON files.
+  try {
+    await getIt<ChatRepository>().initialize();
+  } catch (_) {
+    // Allow the UI to boot even if the platform keyring is temporarily unavailable.
+  }
 }

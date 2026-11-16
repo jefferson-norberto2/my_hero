@@ -45,17 +45,17 @@ class ResponseStyleSection extends StatelessWidget {
               segments: const [
                 ButtonSegment<ResponseStyle>(
                   value: ResponseStyle.brief,
-                  label: Text('Breve'),
+                  label: Text('Curta'),
                   icon: Icon(Icons.bolt),
                 ),
                 ButtonSegment<ResponseStyle>(
                   value: ResponseStyle.simple,
-                  label: Text('Simples'),
+                  label: Text('Padrão'),
                   icon: Icon(Icons.lightbulb_outline),
                 ),
                 ButtonSegment<ResponseStyle>(
                   value: ResponseStyle.detailed,
-                  label: Text('Detalhada'),
+                  label: Text('Longa'),
                   icon: Icon(Icons.menu_book),
                 ),
               ],

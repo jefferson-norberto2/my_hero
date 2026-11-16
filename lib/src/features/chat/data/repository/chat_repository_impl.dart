@@ -11,7 +11,7 @@ import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
-/// Default [ChatRepository] implementation backed by Ollama and local JSON storage.
+/// Default [ChatRepository] implementation backed by Ollama and encrypted local storage.
 class ChatRepositoryImpl implements ChatRepository {
   final OllamaRemoteDatasource _ollamaDatasource;
   final ChatHistoryDatasource _historyDatasource;
@@ -134,12 +134,6 @@ class ChatRepositoryImpl implements ChatRepository {
   }) {
     final messages = <Map<String, dynamic>>[];
 
-    // 1. System prompt enforcing response style.
-    messages.add({
-      'role': 'system',
-      'content': responseStyle.systemInstruction,
-    });
-
     // 2. Recent message history excluding internal app system banners.
     final relevantHistory = history
         .where((m) => !m.text.startsWith('Sistema:') && m.text.trim().isNotEmpty)
@@ -184,6 +178,11 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   void reset() {
     _ollamaDatasource.stopGeneration();
+  }
+
+  @override
+  Future<void> initialize() {
+    return _historyDatasource.initialize();
   }
 
   @override

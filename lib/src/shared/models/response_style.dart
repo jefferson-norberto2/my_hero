@@ -7,11 +7,11 @@ enum ResponseStyle {
   String get label {
     switch (this) {
       case ResponseStyle.brief:
-        return 'Breve';
+        return 'Curta';
       case ResponseStyle.simple:
-        return 'Simples';
+        return 'Padrão';
       case ResponseStyle.detailed:
-        return 'Detalhada';
+        return 'Longa';
     }
   }
 
@@ -20,7 +20,7 @@ enum ResponseStyle {
       case ResponseStyle.brief:
         return 'Respostas curtas, objetivas e diretas ao ponto.';
       case ResponseStyle.simple:
-        return 'Linguagem clara, equilibrada e de fácil entendimento.';
+        return 'Respostas dadas de acordo com o treinamento do modelo.';
       case ResponseStyle.detailed:
         return 'Respostas aprofundadas, explicativas e com mais detalhes.';
     }
@@ -30,11 +30,11 @@ enum ResponseStyle {
   String get promptInstruction {
     switch (this) {
       case ResponseStyle.brief:
-        return 'Por favor, seja breve e direto na resposta.';
+        return 'Seja breve e direto na resposta.';
       case ResponseStyle.simple:
-        return 'Por favor, me dê alguns detalhes, mas não precisa se aprofundar.';
+        return '';
       case ResponseStyle.detailed:
-        return 'Por favor, dê mais detalhes sobre o assunto.';
+        return 'Dê uma resposta detalhada, explicativa e completa, com exemplos se possível.';
     }
   }
 
@@ -43,17 +43,6 @@ enum ResponseStyle {
     final trimmed = prompt.trim();
     if (trimmed.isEmpty) return trimmed;
     return '$trimmed\n\n$promptInstruction';
-  }
-
-  String get systemInstruction {
-    switch (this) {
-      case ResponseStyle.brief:
-        return 'Você é um assistente prestativo. Responda SEMPRE em português. Suas respostas devem ser extremamente BREVES, diretas e objetivas, sem rodeios ou explicações prolixas.';
-      case ResponseStyle.simple:
-        return 'Você é um assistente prestativo. Responda SEMPRE em português. Suas respostas devem usar linguagem SIMPLES, amigável, clara e de tamanho equilibrado, evitando complexidade desnecessária.';
-      case ResponseStyle.detailed:
-        return 'Você é um assistente prestativo. Responda SEMPRE em português. Suas respostas devem ser DETALHADAS, completas, aprofundadas e didáticas, explicando conceitos com riqueza de detalhes e exemplos.';
-    }
   }
 
   static ResponseStyle fromString(String? value) {

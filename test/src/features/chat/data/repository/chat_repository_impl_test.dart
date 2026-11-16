@@ -209,6 +209,14 @@ void main() {
   });
 
   group('ChatRepositoryImpl - history', () {
+    test('initialize should delegate to historyDatasource', () async {
+      when(() => mockHistoryDatasource.initialize()).thenAnswer((_) async {});
+
+      await repository.initialize();
+
+      verify(() => mockHistoryDatasource.initialize()).called(1);
+    });
+
     test('getConversations should delegate to historyDatasource', () async {
       final mockList = [
         Conversation(

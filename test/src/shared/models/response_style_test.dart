@@ -4,19 +4,13 @@ import 'package:my_hero/src/shared/models/response_style.dart';
 void main() {
   group('ResponseStyle Enum', () {
     test('should return correct labels and descriptions', () {
-      expect(ResponseStyle.brief.label, 'Breve');
-      expect(ResponseStyle.simple.label, 'Simples');
-      expect(ResponseStyle.detailed.label, 'Detalhada');
+      expect(ResponseStyle.brief.label, 'Curta');
+      expect(ResponseStyle.simple.label, 'Padrão');
+      expect(ResponseStyle.detailed.label, 'Longa');
 
       expect(ResponseStyle.brief.description, contains('curtas'));
       expect(ResponseStyle.simple.description, contains('Linguagem clara'));
       expect(ResponseStyle.detailed.description, contains('aprofundadas'));
-    });
-
-    test('should have tailored system instructions for each style', () {
-      expect(ResponseStyle.brief.systemInstruction, contains('BREVES'));
-      expect(ResponseStyle.simple.systemInstruction, contains('SIMPLES'));
-      expect(ResponseStyle.detailed.systemInstruction, contains('DETALHADAS'));
     });
 
     test('should provide correct prompt instructions concatenated to user query', () {

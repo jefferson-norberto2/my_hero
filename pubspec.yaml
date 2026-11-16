@@ -7,10 +7,12 @@ environment:
   sdk: ^3.11.4
 
 dependencies:
+  cryptography: ^2.9.0
   dio: ^5.9.2
   file_picker: ^11.0.2
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^10.3.4
   get_it: ^9.3.0
   go_router: ^18.1.4
   gpt_markdown: ^1.3.4

@@ -56,6 +56,8 @@ abstract class ChatRepository {
 
   void reset();
 
+  Future<void> initialize();
+
   Future<List<Conversation>> getConversations();
 
   Future<void> saveConversations(List<Conversation> conversations);

@@ -109,7 +109,7 @@ void main() {
       verifyNever(() => mockOllamaDatasource.preloadModel(any()));
     });
 
-    test('context and memory settings delegate cleanly to datasources', () async {
+    test('context settings delegate cleanly to datasources', () async {
       when(() => mockSettingsDatasource.getContextMode())
           .thenAnswer((_) async => ContextMode.manual);
       when(() => mockSettingsDatasource.saveContextMode(ContextMode.automatic))
@@ -118,10 +118,6 @@ void main() {
           .thenAnswer((_) async => 16384);
       when(() => mockSettingsDatasource.saveManualContextLength(32768))
           .thenAnswer((_) async {});
-      when(() => mockSettingsDatasource.getServerMemoryLimitGb())
-          .thenAnswer((_) async => 32.0);
-      when(() => mockSettingsDatasource.saveServerMemoryLimitGb(64.0))
-          .thenAnswer((_) async {});
       when(() => mockOllamaDatasource.getModelMaxContextLength('qwen2.5:7b'))
           .thenAnswer((_) async => 32768);
 
@@ -129,15 +125,11 @@ void main() {
       await repository.saveContextMode(ContextMode.automatic);
       expect(await repository.loadManualContextLength(), 16384);
       await repository.saveManualContextLength(32768);
-      expect(await repository.loadServerMemoryLimitGb(), 32.0);
-      await repository.saveServerMemoryLimitGb(64.0);
       expect(await repository.getModelMaxContextLength('qwen2.5:7b'), 32768);
 
       verify(() => mockSettingsDatasource.saveContextMode(ContextMode.automatic))
           .called(1);
       verify(() => mockSettingsDatasource.saveManualContextLength(32768))
-          .called(1);
-      verify(() => mockSettingsDatasource.saveServerMemoryLimitGb(64.0))
           .called(1);
     });
 

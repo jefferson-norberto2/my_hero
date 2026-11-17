@@ -1,15 +1,11 @@
 import 'dart:math' as math;
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
-import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 
-/// Parses model context capabilities and computes hardware-safe stepped `num_ctx`.
+/// Parses model context capabilities and computes stepped or manual `num_ctx`.
 class OllamaContextCalculator {
   const OllamaContextCalculator._();
-
-  // Conservative KV-cache + activation overhead estimate per context token (~256 KB).
-  static const int _bytesPerContextToken = 256 * 1024;
 
   // Multimodal image attachment overhead estimate in tokens.
   static const int _imageTokenEstimate = 512;
@@ -41,51 +37,6 @@ class OllamaContextCalculator {
     }
 
     return fallback;
-  }
-
-  /// Calculates a conservative token ceiling based on configured server memory.
-  ///
-  /// Returns `null` when [serverMemoryLimitGb] is not set (`<= 0`).
-  static int? calculateHardwareContextCeiling({
-    required double? serverMemoryLimitGb,
-    required int loadedModelSizeBytes,
-    required ComputeMode computeMode,
-    required int modelMaxContext,
-  }) {
-    if (serverMemoryLimitGb == null || serverMemoryLimitGb <= 0) {
-      return null;
-    }
-
-    final limitBytes =
-        (serverMemoryLimitGb * 1024 * 1024 * 1024).round();
-    final safeLoadedSize =
-        loadedModelSizeBytes > 0 ? loadedModelSizeBytes : 0;
-    final freeBytes = math.max(0, limitBytes - safeLoadedSize);
-
-    // Apply a stricter margin on CPU to protect system RAM from swapping.
-    final double safetyMargin;
-    switch (computeMode) {
-      case ComputeMode.cpu:
-        safetyMargin = 0.50;
-        break;
-      case ComputeMode.hybrid:
-        safetyMargin = 0.65;
-        break;
-      case ComputeMode.gpu:
-      case ComputeMode.none:
-        safetyMargin = 0.80;
-        break;
-    }
-
-    final usableHeadroomBytes = (freeBytes * safetyMargin).floor();
-    final rawTokenBudget = usableHeadroomBytes ~/ _bytesPerContextToken;
-    final minimumFloor =
-        math.min(ContextSettings.fallbackMaxContext, modelMaxContext);
-
-    return math.min(
-      modelMaxContext,
-      math.max(minimumFloor, rawTokenBudget),
-    );
   }
 
   /// Estimates total accumulated tokens for the upcoming request turn.
@@ -143,9 +94,6 @@ class OllamaContextCalculator {
     required int modelMaxContext,
     required int currentStepNumCtx,
     required int estimatedTokens,
-    double? serverMemoryLimitGb,
-    int loadedModelSizeBytes = 0,
-    ComputeMode computeMode = ComputeMode.none,
   }) {
     final safeModelMax = modelMaxContext > 0
         ? modelMaxContext
@@ -161,19 +109,8 @@ class OllamaContextCalculator {
       );
     }
 
-    final hardwareCeiling = calculateHardwareContextCeiling(
-      serverMemoryLimitGb: serverMemoryLimitGb,
-      loadedModelSizeBytes: loadedModelSizeBytes,
-      computeMode: computeMode,
-      modelMaxContext: safeModelMax,
-    );
-
-    final effectiveMax = hardwareCeiling != null
-        ? math.min(safeModelMax, hardwareCeiling)
-        : safeModelMax;
-
     final allowedSteps =
-        ContextSettings.availablePresetsForModel(effectiveMax);
+        ContextSettings.availablePresetsForModel(safeModelMax);
 
     // Preserve current step if already valid so num_ctx never shrinks mid-chat.
     var activeStep = allowedSteps.first;

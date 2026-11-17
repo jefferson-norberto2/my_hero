@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_context_calculator.dart';
-import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 
 void main() {
@@ -47,79 +46,6 @@ void main() {
     });
   });
 
-  group('OllamaContextCalculator.calculateHardwareContextCeiling', () {
-    test('returns null when server memory limit is unset or non-positive', () {
-      expect(
-        OllamaContextCalculator.calculateHardwareContextCeiling(
-          serverMemoryLimitGb: null,
-          loadedModelSizeBytes: 4 * 1024 * 1024 * 1024,
-          computeMode: ComputeMode.gpu,
-          modelMaxContext: 131072,
-        ),
-        isNull,
-      );
-      expect(
-        OllamaContextCalculator.calculateHardwareContextCeiling(
-          serverMemoryLimitGb: 0,
-          loadedModelSizeBytes: 0,
-          computeMode: ComputeMode.cpu,
-          modelMaxContext: 32768,
-        ),
-        isNull,
-      );
-    });
-
-    test('discounts loaded model size and applies stricter margin for CPU than Hybrid and GPU', () {
-      const limitGb = 12.0;
-      const loadedBytes = 6 * 1024 * 1024 * 1024;
-
-      final cpuCeiling = OllamaContextCalculator.calculateHardwareContextCeiling(
-        serverMemoryLimitGb: limitGb,
-        loadedModelSizeBytes: loadedBytes,
-        computeMode: ComputeMode.cpu,
-        modelMaxContext: 131072,
-      )!;
-      final hybridCeiling = OllamaContextCalculator.calculateHardwareContextCeiling(
-        serverMemoryLimitGb: limitGb,
-        loadedModelSizeBytes: loadedBytes,
-        computeMode: ComputeMode.hybrid,
-        modelMaxContext: 131072,
-      )!;
-      final gpuCeiling = OllamaContextCalculator.calculateHardwareContextCeiling(
-        serverMemoryLimitGb: limitGb,
-        loadedModelSizeBytes: loadedBytes,
-        computeMode: ComputeMode.gpu,
-        modelMaxContext: 131072,
-      )!;
-
-      // 6 GB remaining -> 24,576 raw tokens @ 256 KB/token; CPU uses 50% (12,288),
-      // Hybrid uses 65% (15,974), GPU uses 80% (19,660).
-      expect(cpuCeiling, 12288);
-      expect(hybridCeiling, 15974);
-      expect(gpuCeiling, 19660);
-      expect(cpuCeiling, lessThan(hybridCeiling));
-      expect(hybridCeiling, lessThan(gpuCeiling));
-    });
-
-    test('clamps ceiling between fallback 4096 floor and modelMaxContext', () {
-      final lowHeadroomCeiling = OllamaContextCalculator.calculateHardwareContextCeiling(
-        serverMemoryLimitGb: 8.0,
-        loadedModelSizeBytes: 8 * 1024 * 1024 * 1024,
-        computeMode: ComputeMode.cpu,
-        modelMaxContext: 32768,
-      );
-      expect(lowHeadroomCeiling, 4096);
-
-      final highHeadroomCeiling = OllamaContextCalculator.calculateHardwareContextCeiling(
-        serverMemoryLimitGb: 128.0,
-        loadedModelSizeBytes: 2 * 1024 * 1024 * 1024,
-        computeMode: ComputeMode.gpu,
-        modelMaxContext: 16384,
-      );
-      expect(highHeadroomCeiling, 16384);
-    });
-  });
-
   group('OllamaContextCalculator.resolveNumCtx', () {
     test('stays at current fixed step below 80% threshold and scales up at or above 80%', () {
       final belowThreshold = OllamaContextCalculator.resolveNumCtx(
@@ -151,7 +77,7 @@ void main() {
       expect(multiJump, 32768);
     });
 
-    test('never shrinks current step mid-chat and caps automatic mode at hardware ceiling', () {
+    test('never shrinks current step mid-chat and caps automatic mode strictly at modelMaxContext', () {
       final keptStep = OllamaContextCalculator.resolveNumCtx(
         mode: ContextMode.automatic,
         manualContextLength: 4096,
@@ -161,18 +87,14 @@ void main() {
       );
       expect(keptStep, 16384);
 
-      // 10 GB server with 6 GB model on CPU => 4 GB free * 0.50 = 2 GB => 8192 hardware ceiling.
-      final cappedByHardware = OllamaContextCalculator.resolveNumCtx(
+      final cappedByModel = OllamaContextCalculator.resolveNumCtx(
         mode: ContextMode.automatic,
         manualContextLength: 4096,
-        modelMaxContext: 131072,
+        modelMaxContext: 16384,
         currentStepNumCtx: 4096,
         estimatedTokens: 20000,
-        serverMemoryLimitGb: 10.0,
-        loadedModelSizeBytes: 6 * 1024 * 1024 * 1024,
-        computeMode: ComputeMode.cpu,
       );
-      expect(cappedByHardware, 8192);
+      expect(cappedByModel, 16384);
     });
 
     test('manual mode returns selected preset capped to modelMaxContext', () {

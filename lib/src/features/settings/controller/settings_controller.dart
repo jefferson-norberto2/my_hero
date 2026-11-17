@@ -25,7 +25,6 @@ class SettingsController {
   final contextMode = signal<ContextMode>(ContextMode.automatic);
   final manualContextLength =
       signal<int>(ContextSettings.fallbackMaxContext);
-  final serverMemoryLimitGb = signal<double?>(null);
   final isOllamaConnected = signal<bool>(true);
   final isModelLoaded = signal<bool>(false);
 
@@ -57,16 +56,6 @@ class SettingsController {
     return math.max(match.maxContextLength, match.contextLength);
   }
 
-  /// Parses optional memory input in GB into a validated positive double.
-  static double? parseMemoryLimitGb(String? raw) {
-    if (raw == null) return null;
-    final normalized = raw.trim().replaceAll(',', '.');
-    if (normalized.isEmpty) return null;
-    final parsed = double.tryParse(normalized);
-    if (parsed == null || parsed <= 0) return null;
-    return parsed;
-  }
-
   /// Initializes the controller with optional route arguments or loads from storage.
   Future<void> init([SettingsArgs? args]) async {
     _bindDownloadState();
@@ -85,7 +74,6 @@ class SettingsController {
       responseStyle.value = args.responseStyle;
       contextMode.value = args.contextMode;
       manualContextLength.value = args.manualContextLength;
-      serverMemoryLimitGb.value = args.serverMemoryLimitGb;
       isOllamaConnected.value = args.isOllamaConnected;
       isModelLoaded.value = args.isModelLoaded ||
           availableModels.value.any(
@@ -114,8 +102,6 @@ class SettingsController {
       ollamaBaseUrl.value = savedUrl;
       contextMode.value = await _repository.loadContextMode();
       manualContextLength.value = await _repository.loadManualContextLength();
-      serverMemoryLimitGb.value =
-          await _repository.loadServerMemoryLimitGb();
     } catch (_) {
       // Keep defaults if persisted configuration cannot be read.
     }
@@ -147,10 +133,6 @@ class SettingsController {
   void selectManualContextLength(int length) {
     manualContextLength.value = length;
     _clampManualContextLength();
-  }
-
-  void setServerMemoryLimitFromInput(String raw) {
-    serverMemoryLimitGb.value = parseMemoryLimitGb(raw);
   }
 
   void _clampManualContextLength() {
@@ -406,7 +388,6 @@ class SettingsController {
   /// Persists settings changes and builds the result to return to chat.
   Future<SettingsResult> saveSettings({
     String? pendingHostInput,
-    String? pendingMemoryLimitInput,
   }) async {
     if (isEditingServer.value &&
         pendingHostInput != null &&
@@ -417,10 +398,6 @@ class SettingsController {
       }
     }
 
-    if (pendingMemoryLimitInput != null) {
-      serverMemoryLimitGb.value = parseMemoryLimitGb(pendingMemoryLimitInput);
-    }
-
     if (ollamaBaseUrl.value != _initialServerUrl) {
       await _repository.saveOllamaBaseUrl(ollamaBaseUrl.value);
       _initialServerUrl = ollamaBaseUrl.value;
@@ -429,7 +406,6 @@ class SettingsController {
     try {
       await _repository.saveContextMode(contextMode.value);
       await _repository.saveManualContextLength(manualContextLength.value);
-      await _repository.saveServerMemoryLimitGb(serverMemoryLimitGb.value);
     } catch (_) {
       // Ignore storage persistence errors on save.
     }
@@ -443,7 +419,6 @@ class SettingsController {
       isModelLoaded: isModelLoaded.value,
       contextMode: contextMode.value,
       manualContextLength: manualContextLength.value,
-      serverMemoryLimitGb: serverMemoryLimitGb.value,
     );
   }
 }

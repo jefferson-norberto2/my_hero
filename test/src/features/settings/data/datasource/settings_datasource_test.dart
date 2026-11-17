@@ -59,21 +59,15 @@ void main() {
       expect(result, equals(AppConstants.ollamaBaseUrl));
     });
 
-    test('contextMode, manualContextLength, and serverMemoryLimitGb persist and clear properly', () async {
+    test('contextMode and manualContextLength persist properly', () async {
       expect(await datasource.getContextMode(), ContextMode.automatic);
       expect(await datasource.getManualContextLength(), 4096);
-      expect(await datasource.getServerMemoryLimitGb(), isNull);
 
       await datasource.saveContextMode(ContextMode.manual);
       await datasource.saveManualContextLength(16384);
-      await datasource.saveServerMemoryLimitGb(32.0);
 
       expect(await datasource.getContextMode(), ContextMode.manual);
       expect(await datasource.getManualContextLength(), 16384);
-      expect(await datasource.getServerMemoryLimitGb(), 32.0);
-
-      await datasource.saveServerMemoryLimitGb(null);
-      expect(await datasource.getServerMemoryLimitGb(), isNull);
     });
 
     test('themeMode defaults to light and persists dark/light round-trip', () async {

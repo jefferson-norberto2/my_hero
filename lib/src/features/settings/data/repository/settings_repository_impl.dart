@@ -64,16 +64,6 @@ class SettingsRepositoryImpl implements SettingsRepository {
   }
 
   @override
-  Future<double?> loadServerMemoryLimitGb() {
-    return _settingsDatasource.getServerMemoryLimitGb();
-  }
-
-  @override
-  Future<void> saveServerMemoryLimitGb(double? limitGb) {
-    return _settingsDatasource.saveServerMemoryLimitGb(limitGb);
-  }
-
-  @override
   Future<ThemeMode> loadThemeMode() {
     return _settingsDatasource.getThemeMode();
   }

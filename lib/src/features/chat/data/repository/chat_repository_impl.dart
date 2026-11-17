@@ -76,14 +76,6 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<double?> loadServerMemoryLimitGb() async {
-    if (_settingsDatasource != null) {
-      return _settingsDatasource.getServerMemoryLimitGb();
-    }
-    return null;
-  }
-
-  @override
   Future<bool> checkOllamaHealth([String? customUrl]) {
     return _ollamaDatasource.checkHealth(customUrl);
   }

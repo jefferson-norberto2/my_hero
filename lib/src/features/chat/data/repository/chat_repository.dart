@@ -21,8 +21,6 @@ abstract class ChatRepository {
 
   Future<int> loadManualContextLength();
 
-  Future<double?> loadServerMemoryLimitGb();
-
   Future<bool> checkOllamaHealth([String? customUrl]);
 
   Future<List<OllamaModel>> getAvailableModels();

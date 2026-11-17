@@ -18,7 +18,7 @@ enum ContextMode {
   String get description {
     switch (this) {
       case ContextMode.automatic:
-        return 'Inicia em 4.096 tokens e escala em degraus fixos conforme a conversa cresce, respeitando o limite do modelo e da memória.';
+        return 'Inicia em 4.096 tokens e escala em degraus fixos conforme a conversa cresce, respeitando a capacidade máxima do modelo ativo.';
       case ContextMode.manual:
         return 'Mantém sempre o limite fixo selecionado abaixo, respeitando a capacidade máxima do modelo ativo.';
     }

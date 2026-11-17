@@ -8,7 +8,6 @@ class ContextWindowSection extends StatelessWidget {
   final ContextMode selectedMode;
   final int manualContextLength;
   final int maxModelContext;
-  final double? serverMemoryLimitGb;
   final ValueChanged<ContextMode> onModeChanged;
   final ValueChanged<int> onManualPresetSelected;
 
@@ -19,14 +18,7 @@ class ContextWindowSection extends StatelessWidget {
     required this.maxModelContext,
     required this.onModeChanged,
     required this.onManualPresetSelected,
-    this.serverMemoryLimitGb,
   });
-
-  String _formatGb(double gb) {
-    return gb == gb.roundToDouble()
-        ? gb.toStringAsFixed(0)
-        : gb.toStringAsFixed(1);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,36 +138,6 @@ class ContextWindowSection extends StatelessWidget {
                     ),
                   );
                 }).toList(),
-              ),
-            ] else if (serverMemoryLimitGb != null &&
-                serverMemoryLimitGb! > 0) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: appColors.infoSurface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: appColors.infoBorder),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.shield_outlined,
-                      size: 18,
-                      color: appColors.infoIcon,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Escalonamento em degraus limitado pela memória informada (${_formatGb(serverMemoryLimitGb!)} GB).',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: appColors.infoText,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ],

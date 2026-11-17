@@ -310,7 +310,7 @@ void main() {
       expect(find.text('Open'), findsOneWidget);
     });
 
-    testWidgets('context section caps manual presets to model max and saves memory limit', (tester) async {
+    testWidgets('context section caps manual presets to model max without memory limit controls', (tester) async {
       SettingsResult? capturedResult;
       const modelWith16k = OllamaModel(
         name: 'qwen2.5:7b',
@@ -323,8 +323,6 @@ void main() {
 
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
-          .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
           .thenAnswer((_) async {});
 
       await tester.pumpWidget(
@@ -342,6 +340,11 @@ void main() {
 
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('server_memory_limit_field')), findsNothing);
+      expect(find.text('16 GB'), findsNothing);
+      expect(find.text('32 GB'), findsNothing);
+      expect(find.text('64 GB'), findsNothing);
 
       await tester.ensureVisible(find.text('Manual'));
       await tester.tap(find.text('Manual'));
@@ -363,10 +366,6 @@ void main() {
       await tester.tap(find.text('16384'));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('32 GB'));
-      await tester.tap(find.text('32 GB'));
-      await tester.pumpAndSettle();
-
       await tester.ensureVisible(find.text('Salvar'));
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
@@ -374,7 +373,6 @@ void main() {
       expect(capturedResult, isNotNull);
       expect(capturedResult!.contextMode, ContextMode.manual);
       expect(capturedResult!.manualContextLength, 16384);
-      expect(capturedResult!.serverMemoryLimitGb, 32.0);
     });
 
     testWidgets('changing model recalculates proportional presets and clamps selected num_ctx', (tester) async {
@@ -391,8 +389,6 @@ void main() {
           .thenAnswer((_) async => 8192);
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
-          .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
           .thenAnswer((_) async {});
 
       await tester.pumpWidget(

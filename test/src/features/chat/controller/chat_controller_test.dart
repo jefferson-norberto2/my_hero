@@ -585,7 +585,7 @@ void main() {
       );
     });
 
-    test('sendMessage respects CPU hardware ceiling and manual mode cap', () async {
+    test('sendMessage caps automatic step-up strictly at modelMaxContext while preserving passive memory monitoring', () async {
       await controller.createNewConversation();
       controller.isModelLoaded.value = true;
 
@@ -594,14 +594,13 @@ void main() {
         model: 'llama3.1:8b',
         size: 6500000000,
         isLoaded: true,
-        maxContextLength: 65536,
+        maxContextLength: 8192,
         memoryAllocation: OllamaMemoryParser.fromBytes(
           sizeBytes: 6979321856, // 6.5 GB on CPU
           vramBytes: 0,
         ),
       );
 
-      // 8 GB server limit with 6.5 GB model -> 1.5 GB free * 0.50 CPU margin -> 4096 ceiling.
       await controller.applySettings(
         SettingsResult(
           selectedModelName: 'llama3.1:8b',
@@ -611,7 +610,6 @@ void main() {
           isOllamaConnected: true,
           isModelLoaded: true,
           contextMode: ContextMode.automatic,
-          serverMemoryLimitGb: 8.0,
         ),
       );
 
@@ -631,7 +629,7 @@ void main() {
         capturedNumCtx.add(invocation.namedArguments[#numCtx] as int?);
         final onMetrics =
             invocation.namedArguments[#onMetrics] as void Function(int, int)?;
-        onMetrics?.call(3800, 150);
+        onMetrics?.call(7000, 150);
         return Stream.fromIterable(const [
           ChatStreamChunk(contentDelta: 'Ok', isDone: true),
         ]);
@@ -640,7 +638,13 @@ void main() {
       await controller.sendMessage('Turno 1');
       await controller.sendMessage('Turno 2 acima de 80%');
 
-      expect(capturedNumCtx, [4096, 4096]);
+      expect(capturedNumCtx, [4096, 8192]);
+      expect(controller.currentMetrics.value.computeMode, ComputeMode.cpu);
+      expect(controller.currentMetrics.value.memoryFormatted, '6.5 GB');
+      expect(
+        controller.currentMetrics.value.hardwareTooltip,
+        'Memória RAM (CPU): 6.5 GB',
+      );
     });
   });
 

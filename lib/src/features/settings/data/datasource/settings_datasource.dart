@@ -6,7 +6,7 @@ import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Persists application-wide settings such as the Ollama server URL,
-/// context window preferences, theme mode, and optional hardware memory ceiling.
+/// context window preferences, and theme mode.
 abstract class SettingsDatasource {
   Future<String> getOllamaBaseUrl();
   Future<void> saveOllamaBaseUrl(String url);
@@ -14,8 +14,6 @@ abstract class SettingsDatasource {
   Future<void> saveContextMode(ContextMode mode);
   Future<int> getManualContextLength();
   Future<void> saveManualContextLength(int length);
-  Future<double?> getServerMemoryLimitGb();
-  Future<void> saveServerMemoryLimitGb(double? limitGb);
   Future<ThemeMode> getThemeMode();
   Future<void> saveThemeMode(ThemeMode mode);
 }
@@ -25,7 +23,6 @@ class SettingsDatasourceImpl implements SettingsDatasource {
   static const String _ollamaUrlKey = 'ollama_base_url';
   static const String _contextModeKey = 'context_mode';
   static const String _manualContextLengthKey = 'manual_context_length';
-  static const String _serverMemoryLimitGbKey = 'server_memory_limit_gb';
   static const String _themeModeKey = 'theme_mode';
 
   Future<File> _getFile() async {
@@ -97,27 +94,6 @@ class SettingsDatasourceImpl implements SettingsDatasource {
   @override
   Future<void> saveManualContextLength(int length) {
     return _updateSettingsMap((map) => map[_manualContextLengthKey] = length);
-  }
-
-  @override
-  Future<double?> getServerMemoryLimitGb() async {
-    final map = await _readSettingsMap();
-    final value = (map[_serverMemoryLimitGbKey] as num?)?.toDouble();
-    if (value != null && value > 0) {
-      return value;
-    }
-    return null;
-  }
-
-  @override
-  Future<void> saveServerMemoryLimitGb(double? limitGb) {
-    return _updateSettingsMap((map) {
-      if (limitGb == null || limitGb <= 0) {
-        map.remove(_serverMemoryLimitGbKey);
-      } else {
-        map[_serverMemoryLimitGbKey] = limitGb;
-      }
-    });
   }
 
   @override

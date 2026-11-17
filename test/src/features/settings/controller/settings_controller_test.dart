@@ -172,8 +172,6 @@ void main() {
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
           .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
-          .thenAnswer((_) async {});
 
       await controller.init(
         SettingsArgs(
@@ -201,8 +199,6 @@ void main() {
           .thenAnswer((_) async => 131072);
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
-          .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
           .thenAnswer((_) async {});
 
       await controller.init(
@@ -232,8 +228,6 @@ void main() {
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
           .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
-          .thenAnswer((_) async {});
 
       await controller.init(
         SettingsArgs(
@@ -254,11 +248,9 @@ void main() {
       expect(controller.manualContextLength.value, 4096);
     });
 
-    test('saveSettings persists context mode, manual preset, and optional server memory limit', () async {
+    test('saveSettings persists context mode and manual preset', () async {
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
-          .thenAnswer((_) async {});
-      when(() => mockRepository.saveServerMemoryLimitGb(any()))
           .thenAnswer((_) async {});
 
       await controller.init(
@@ -272,16 +264,12 @@ void main() {
       controller.selectContextMode(ContextMode.manual);
       controller.selectManualContextLength(20480);
 
-      final result = await controller.saveSettings(
-        pendingMemoryLimitInput: '32',
-      );
+      final result = await controller.saveSettings();
 
       expect(result.contextMode, ContextMode.manual);
       expect(result.manualContextLength, 20480);
-      expect(result.serverMemoryLimitGb, 32.0);
       verify(() => mockRepository.saveContextMode(ContextMode.manual)).called(1);
       verify(() => mockRepository.saveManualContextLength(20480)).called(1);
-      verify(() => mockRepository.saveServerMemoryLimitGb(32.0)).called(1);
     });
 
     test('downloadModel tracks repository download stream and refreshes models on completion', () async {

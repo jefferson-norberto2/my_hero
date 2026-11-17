@@ -13,8 +13,6 @@ abstract class SettingsRepository {
   Future<void> saveContextMode(ContextMode mode);
   Future<int> loadManualContextLength();
   Future<void> saveManualContextLength(int length);
-  Future<double?> loadServerMemoryLimitGb();
-  Future<void> saveServerMemoryLimitGb(double? limitGb);
   Future<ThemeMode> loadThemeMode();
   Future<void> saveThemeMode(ThemeMode mode);
   Future<bool> checkOllamaHealth([String? customUrl]);

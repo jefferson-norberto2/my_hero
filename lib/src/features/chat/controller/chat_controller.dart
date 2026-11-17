@@ -52,7 +52,6 @@ class ChatController {
   final contextMode = signal<ContextMode>(ContextMode.automatic);
   final manualContextLength =
       signal<int>(ContextSettings.fallbackMaxContext);
-  final serverMemoryLimitGb = signal<double?>(null);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
   final attachedAttachment = signal<ChatAttachment?>(null);
@@ -94,7 +93,6 @@ class ChatController {
       isModelLoaded: isModelLoaded.value,
       contextMode: contextMode.value,
       manualContextLength: manualContextLength.value,
-      serverMemoryLimitGb: serverMemoryLimitGb.value,
     );
   }
 
@@ -105,13 +103,11 @@ class ChatController {
     await refreshModels();
   }
 
-  /// Loads persisted context window and server memory settings.
+  /// Loads persisted context window settings.
   Future<void> loadContextSettings() async {
     try {
       contextMode.value = await _repository.loadContextMode();
       manualContextLength.value = await _repository.loadManualContextLength();
-      serverMemoryLimitGb.value =
-          await _repository.loadServerMemoryLimitGb();
     } catch (_) {
       // Keep default dynamic context configuration on read errors.
     }
@@ -226,16 +222,12 @@ class ChatController {
 
   int _resolveActiveNumCtxForState({
     OllamaModel? model,
-    MemoryAllocation? allocation,
     int? currentStepNumCtx,
     int estimatedTokens = 0,
   }) {
     final modelMax = model != null
         ? math.max(model.maxContextLength, model.contextLength)
         : currentMetrics.value.maxContextLength;
-    final mem = allocation ?? currentMetrics.value.memoryAllocation;
-    final loadedSize =
-        mem.totalBytes > 0 ? mem.totalBytes : (model?.size ?? 0);
 
     return OllamaContextCalculator.resolveNumCtx(
       mode: contextMode.value,
@@ -244,9 +236,6 @@ class ChatController {
       currentStepNumCtx:
           currentStepNumCtx ?? ContextSettings.fallbackMaxContext,
       estimatedTokens: estimatedTokens,
-      serverMemoryLimitGb: serverMemoryLimitGb.value,
-      loadedModelSizeBytes: loadedSize,
-      computeMode: mem.computeMode,
     );
   }
 
@@ -255,7 +244,6 @@ class ChatController {
     final modelMax = math.max(model.maxContextLength, model.contextLength);
     final activeNumCtx = _resolveActiveNumCtxForState(
       model: model,
-      allocation: allocation,
       currentStepNumCtx: currentConversation?.activeNumCtx,
       estimatedTokens: currentMetrics.value.totalTokens,
     );
@@ -459,7 +447,6 @@ class ChatController {
     responseStyle.value = targetStyle;
     contextMode.value = result.contextMode;
     manualContextLength.value = result.manualContextLength;
-    serverMemoryLimitGb.value = result.serverMemoryLimitGb;
 
     final conv = currentConversation;
     if (conv != null) {

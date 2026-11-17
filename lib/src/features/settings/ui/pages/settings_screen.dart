@@ -35,16 +35,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ThemeController? _themeController;
   final Signal<ThemeMode> _fallbackThemeMode = signal<ThemeMode>(ThemeMode.light);
   late final TextEditingController _hostController;
-  late final TextEditingController _memoryLimitController;
   late final TextEditingController _pullModelController;
   bool _isSaving = false;
-
-  String _formatMemoryText(double? gb) {
-    if (gb == null || gb <= 0) return '';
-    return gb == gb.roundToDouble()
-        ? gb.toStringAsFixed(0)
-        : gb.toStringAsFixed(1);
-  }
 
   @override
   void initState() {
@@ -55,25 +47,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ? GetIt.I<ThemeController>()
             : null);
     _hostController = TextEditingController();
-    _memoryLimitController = TextEditingController();
     _pullModelController = TextEditingController();
     _controller.init(widget.initialArgs).then((_) {
       if (mounted) {
         _hostController.text = _controller.ollamaBaseUrl.value;
-        _memoryLimitController.text =
-            _formatMemoryText(_controller.serverMemoryLimitGb.value);
       }
     });
     _hostController.text = _controller.ollamaBaseUrl.value;
-    _memoryLimitController.text =
-        _formatMemoryText(_controller.serverMemoryLimitGb.value);
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _hostController.dispose();
-    _memoryLimitController.dispose();
     _pullModelController.dispose();
     super.dispose();
   }
@@ -104,7 +90,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final result = await _controller.saveSettings(
         pendingHostInput: _hostController.text,
-        pendingMemoryLimitInput: _memoryLimitController.text,
       );
       _navigateBack(result);
     } finally {
@@ -184,8 +169,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _controller.contextMode.value;
                         final manualContextLength =
                             _controller.manualContextLength.value;
-                        final serverMemoryLimitGb =
-                            _controller.serverMemoryLimitGb.value;
                         final maxModelContext =
                             _controller.activeModelMaxContext;
                         final isEditingServer =
@@ -238,7 +221,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               selectedMode: selectedContextMode,
                               manualContextLength: manualContextLength,
                               maxModelContext: maxModelContext,
-                              serverMemoryLimitGb: serverMemoryLimitGb,
                               onModeChanged: _controller.selectContextMode,
                               onManualPresetSelected:
                                   _controller.selectManualContextLength,
@@ -253,9 +235,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               testSuccess: testSuccess,
                               testMessage: testMessage,
                               hostController: _hostController,
-                              memoryLimitController: _memoryLimitController,
-                              onMemoryLimitChanged:
-                                  _controller.setServerMemoryLimitFromInput,
                               onToggleEditor: () {
                                 if (!isEditingServer) {
                                   _hostController.text = serverUrl;

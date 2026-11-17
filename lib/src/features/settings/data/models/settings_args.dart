@@ -12,7 +12,6 @@ class SettingsArgs {
   final bool isModelLoaded;
   final ContextMode contextMode;
   final int manualContextLength;
-  final double? serverMemoryLimitGb;
 
   const SettingsArgs({
     this.selectedModelName = '',
@@ -23,7 +22,6 @@ class SettingsArgs {
     this.isModelLoaded = false,
     this.contextMode = ContextMode.automatic,
     this.manualContextLength = ContextSettings.fallbackMaxContext,
-    this.serverMemoryLimitGb,
   });
 }
 
@@ -37,7 +35,6 @@ class SettingsResult {
   final bool isModelLoaded;
   final ContextMode contextMode;
   final int manualContextLength;
-  final double? serverMemoryLimitGb;
 
   const SettingsResult({
     required this.selectedModelName,
@@ -48,6 +45,5 @@ class SettingsResult {
     required this.isModelLoaded,
     this.contextMode = ContextMode.automatic,
     this.manualContextLength = ContextSettings.fallbackMaxContext,
-    this.serverMemoryLimitGb,
   });
 }

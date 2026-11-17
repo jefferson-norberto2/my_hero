@@ -8,10 +8,16 @@ import 'package:my_hero/src/features/chat/ui/widgets/chat_drawer.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_message_list.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_metrics_badge.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/chat_selection_appbar.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+
+enum _ChatExportAction {
+  exportFull,
+  selectMessages,
+}
 
 /// Main chat page displaying conversation messages, input bar, and status metrics.
 class ChatPage extends StatefulWidget {
@@ -250,11 +256,19 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildMetricsBadge(BuildContext context) {
+  Widget _buildMetricsBadge(BuildContext context, {required bool isCompact}) {
     return SignalBuilder(
       builder: (context) {
         final isLoaded = _controller.isModelLoaded.value;
         if (!isLoaded) return const SizedBox.shrink();
+
+        if (isCompact) {
+          return IconButton(
+            icon: const Icon(Icons.analytics_outlined),
+            tooltip: 'Métricas do Modelo',
+            onPressed: () => _showMetricsDetailsDialog(context),
+          );
+        }
 
         return ChatMetricsBadge(
           metrics: _controller.currentMetrics.value,
@@ -264,93 +278,252 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      drawer: ChatDrawer(
-        controller: _controller,
-        onOpenSettings: () => _openSettings(context),
+  Future<void> _handleExportFullConversation() async {
+    final exported = await _controller.exportFullConversation();
+    if (exported && mounted) {
+      _showExportSuccessSnackBar();
+    }
+  }
+
+  Future<void> _handleExportSelectedMessages() async {
+    final exported = await _controller.exportSelectedMessages();
+    if (exported && mounted) {
+      _showExportSuccessSnackBar();
+    }
+  }
+
+  void _showExportSuccessSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Arquivo exportado com sucesso!'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
       ),
-      appBar: AppBar(
-        title: SignalBuilder(
-          builder: (context) {
-            final conv = _controller.currentConversation;
-            final isLoaded = _controller.isModelLoaded.value;
-            final isConnected = _controller.isOllamaConnected.value;
-            final modelName = _controller.selectedModelName.value;
-            final host = _controller.ollamaBaseUrl.value;
+    );
+  }
 
-            String subtitle;
-            if (!isConnected) {
-              subtitle = 'Ollama desconectado ($host)';
-            } else if (isLoaded && modelName.isNotEmpty) {
-              subtitle = '$modelName • ${_controller.responseStyle.value.label}';
-            } else if (modelName.isNotEmpty) {
-              subtitle = '$modelName (não carregado na memória)';
-            } else {
-              subtitle = 'Nenhum modelo selecionado ($host)';
+  Widget _buildExportMenuButton(BuildContext context) {
+    return SignalBuilder(
+      builder: (context) {
+        final isGenerating = _controller.isGenerating.value;
+        final isExporting = _controller.isExporting.value;
+        // Subscribe to chatHistory so menu availability reflects new messages.
+        _controller.chatHistory.value;
+        final hasExportable = _controller.hasExportableMessages;
+
+        return PopupMenuButton<_ChatExportAction>(
+          icon: const Icon(Icons.file_download_outlined),
+          tooltip: 'Exportar',
+          constraints: const BoxConstraints(minWidth: 268, maxWidth: 320),
+          enabled: !isGenerating && !isExporting,
+          onSelected: (action) {
+            switch (action) {
+              case _ChatExportAction.exportFull:
+                _handleExportFullConversation();
+                break;
+              case _ChatExportAction.selectMessages:
+                _controller.enterSelectionMode();
+                break;
             }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  conv?.title ?? 'Ollama Chat',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<_ChatExportAction>(
+              value: _ChatExportAction.exportFull,
+              enabled: hasExportable,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.description_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Exportar conversa completa',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
+                ],
+              ),
+            ),
+            PopupMenuItem<_ChatExportAction>(
+              value: _ChatExportAction.selectMessages,
+              enabled: hasExportable,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.checklist_rounded, size: 18),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Selecionar mensagens',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _buildDefaultAppBar(
+    BuildContext context, {
+    required bool isCompact,
+  }) {
+    return AppBar(
+      title: SignalBuilder(
+        builder: (context) {
+          final conv = _controller.currentConversation;
+          final isLoaded = _controller.isModelLoaded.value;
+          final isConnected = _controller.isOllamaConnected.value;
+          final modelName = _controller.selectedModelName.value;
+          final host = _controller.ollamaBaseUrl.value;
+
+          String subtitle;
+          if (!isConnected) {
+            subtitle = 'Ollama desconectado ($host)';
+          } else if (isLoaded && modelName.isNotEmpty) {
+            subtitle = '$modelName • ${_controller.responseStyle.value.label}';
+          } else if (modelName.isNotEmpty) {
+            subtitle = '$modelName (não carregado na memória)';
+          } else {
+            subtitle = 'Nenhum modelo selecionado ($host)';
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                conv?.title ?? 'Ollama Chat',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 11),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          );
+        },
+      ),
+      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      actions: [
+        _buildMetricsBadge(context, isCompact: isCompact),
+        _buildExportMenuButton(context),
+        SignalBuilder(
+          builder: (context) {
+            final isGenerating = _controller.isGenerating.value;
+
+            return IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: 'Configurações',
+              onPressed: isGenerating ? null : () => _openSettings(context),
             );
           },
         ),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          _buildMetricsBadge(context),
-          SignalBuilder(
-            builder: (context) {
-              final isGenerating = _controller.isGenerating.value;
+      ],
+    );
+  }
 
-              return IconButton(
-                icon: const Icon(Icons.tune),
-                tooltip: 'Configurações',
-                onPressed: isGenerating ? null : () => _openSettings(context),
-              );
-            },
+  @override
+  Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 480;
+
+    return SignalBuilder(
+      builder: (context) {
+        final isSelectionMode = _controller.isSelectionMode.value;
+
+        return PopScope(
+          canPop: !isSelectionMode,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && isSelectionMode) {
+              _controller.exitSelectionMode();
+            }
+          },
+          child: Scaffold(
+            drawer: isSelectionMode
+                ? null
+                : ChatDrawer(
+                    controller: _controller,
+                    onOpenSettings: () => _openSettings(context),
+                  ),
+            drawerEnableOpenDragGesture: !isSelectionMode,
+            appBar: isSelectionMode
+                ? _ReactiveSelectionAppBar(
+                    controller: _controller,
+                    isCompact: isCompact,
+                    onExport: _handleExportSelectedMessages,
+                  )
+                : _buildDefaultAppBar(context, isCompact: isCompact),
+            body: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ChatMessageList(controller: _controller),
+                  ),
+                  SignalBuilder(
+                    builder: (context) {
+                      if (_controller.isLoading.value ||
+                          _controller.isGenerating.value ||
+                          _controller.isExporting.value) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: LinearProgressIndicator(),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                  if (!isSelectionMode) ChatInputBar(controller: _controller),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Expanded(
-              child: ChatMessageList(controller: _controller),
-            ),
-            SignalBuilder(
-              builder: (context) {
-                if (_controller.isLoading.value ||
-                    _controller.isGenerating.value) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8.0),
-                    child: LinearProgressIndicator(),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            ChatInputBar(controller: _controller),
-          ],
-        ),
-      ),
+        );
+      },
+    );
+  }
+}
+
+class _ReactiveSelectionAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
+  final ChatController controller;
+  final bool isCompact;
+  final VoidCallback onExport;
+
+  const _ReactiveSelectionAppBar({
+    required this.controller,
+    required this.isCompact,
+    required this.onExport,
+  });
+
+  @override
+  Size get preferredSize => Size.fromHeight(
+        kToolbarHeight + (isCompact ? 52.0 : 0.0),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SignalBuilder(
+      builder: (context) {
+        return ChatSelectionAppBar(
+          selectedCount: controller.selectedMessageCount,
+          selectableCount: controller.selectableMessageIndices.length,
+          allSelected: controller.areAllMessagesSelected,
+          isExporting: controller.isExporting.value,
+          isCompact: isCompact,
+          onClose: controller.exitSelectionMode,
+          onToggleSelectAll: controller.toggleSelectAllMessages,
+          onExport: onExport,
+        );
+      },
     );
   }
 }

@@ -4,18 +4,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/chat/data/services/file_export_service.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
-import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockChatRepository extends Mock implements ChatRepository {}
 class MockMediaPickerService extends Mock implements MediaPickerService {}
+class MockFileExportService extends Mock implements FileExportService {}
 
 void main() {
   late MockChatRepository mockRepository;
@@ -751,6 +754,124 @@ void main() {
       controller.dispose();
       verifyNever(() => mockRepository.reset());
       verifyNever(() => mockRepository.stopGeneration());
+    });
+  });
+
+  group('ChatController - Message Selection & Export', () {
+    late MockFileExportService mockFileExportService;
+    late ChatController exportController;
+
+    setUp(() async {
+      mockFileExportService = MockFileExportService();
+      exportController = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        fileExportService: mockFileExportService,
+      );
+      exportController.selectedModelName.value = 'llama3.2:3b';
+      await exportController.createNewConversation();
+      exportController.chatHistory.value = [
+        ChatMessage(content: 'Sistema: Modelo carregado', isUser: false),
+        ChatMessage(content: 'Olá', isUser: true),
+        ChatMessage(content: 'Oi, tudo bem?', isUser: false),
+        ChatMessage(content: '', thinkingContent: 'Pensando...', isUser: false),
+      ];
+    });
+
+    test('enterSelectionMode selects initial message and ignores system/empty messages', () {
+      exportController.enterSelectionMode(initialMessageIndex: 0);
+      expect(exportController.isSelectionMode.value, isFalse);
+
+      exportController.enterSelectionMode(initialMessageIndex: 3);
+      expect(exportController.isSelectionMode.value, isFalse);
+
+      exportController.enterSelectionMode(initialMessageIndex: 2);
+      expect(exportController.isSelectionMode.value, isTrue);
+      expect(exportController.selectedMessageIndices.value, {2});
+      expect(exportController.selectedMessageCount, 1);
+    });
+
+    test('toggleMessageSelection and toggleSelectAllMessages manage selectable messages cleanly', () {
+      exportController.enterSelectionMode();
+      expect(exportController.isSelectionMode.value, isTrue);
+      expect(exportController.selectedMessageCount, 0);
+
+      exportController.toggleMessageSelection(1);
+      expect(exportController.selectedMessageIndices.value, {1});
+      expect(exportController.areAllMessagesSelected, isFalse);
+
+      exportController.toggleSelectAllMessages();
+      expect(exportController.selectedMessageIndices.value, {1, 2});
+      expect(exportController.areAllMessagesSelected, isTrue);
+
+      exportController.toggleSelectAllMessages();
+      expect(exportController.selectedMessageIndices.value, isEmpty);
+      expect(exportController.areAllMessagesSelected, isFalse);
+
+      exportController.exitSelectionMode();
+      expect(exportController.isSelectionMode.value, isFalse);
+    });
+
+    test('exportSelectedMessages exits selection mode only when export succeeds', () async {
+      when(
+        () => mockFileExportService.exportSelectedMessages(
+          conversationTitle: any(named: 'conversationTitle'),
+          allMessages: any(named: 'allMessages'),
+          selectedIndices: any(named: 'selectedIndices'),
+        ),
+      ).thenAnswer((_) async => false);
+
+      exportController.enterSelectionMode(initialMessageIndex: 1);
+      final cancelled = await exportController.exportSelectedMessages();
+
+      expect(cancelled, isFalse);
+      expect(exportController.isSelectionMode.value, isTrue);
+      expect(exportController.selectedMessageIndices.value, {1});
+
+      when(
+        () => mockFileExportService.exportSelectedMessages(
+          conversationTitle: any(named: 'conversationTitle'),
+          allMessages: any(named: 'allMessages'),
+          selectedIndices: any(named: 'selectedIndices'),
+        ),
+      ).thenAnswer((_) async => true);
+
+      final succeeded = await exportController.exportSelectedMessages();
+
+      expect(succeeded, isTrue);
+      expect(exportController.isSelectionMode.value, isFalse);
+      expect(exportController.selectedMessageIndices.value, isEmpty);
+    });
+
+    test('exportFullConversation delegates to FileExportService and clears active selection mode', () async {
+      when(
+        () => mockFileExportService.exportConversationMessages(
+          title: any(named: 'title'),
+          messages: any(named: 'messages'),
+        ),
+      ).thenAnswer((_) async => true);
+
+      exportController.enterSelectionMode(initialMessageIndex: 1);
+      final result = await exportController.exportFullConversation();
+
+      expect(result, isTrue);
+      expect(exportController.isSelectionMode.value, isFalse);
+      verify(
+        () => mockFileExportService.exportConversationMessages(
+          title: 'Nova Conversa',
+          messages: exportController.chatHistory.value,
+        ),
+      ).called(1);
+    });
+
+    test('createNewConversation exits selection mode and clears selected indices', () async {
+      exportController.enterSelectionMode(initialMessageIndex: 1);
+      expect(exportController.isSelectionMode.value, isTrue);
+
+      await exportController.createNewConversation();
+
+      expect(exportController.isSelectionMode.value, isFalse);
+      expect(exportController.selectedMessageIndices.value, isEmpty);
     });
   });
 }

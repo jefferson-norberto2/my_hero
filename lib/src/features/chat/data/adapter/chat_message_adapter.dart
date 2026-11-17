@@ -17,6 +17,13 @@ class ChatMessage {
   /// Whether this message has non-empty reasoning content or is actively thinking.
   bool get hasThinking => isThinking || thinkingContent.trim().isNotEmpty;
 
+  /// Whether this message is an internal application system banner rather than
+  /// a user or assistant conversation message.
+  bool get isSystemMessage => !isUser && content.startsWith('Sistema:');
+
+  /// Whether this message contains exportable conversation text.
+  bool get isExportable => !isSystemMessage && content.trim().isNotEmpty;
+
   ChatMessage({
     String? text,
     String? content,

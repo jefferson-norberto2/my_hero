@@ -9,6 +9,7 @@ import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_context_calculator.dart';
 import 'package:my_hero/src/features/chat/data/adapter/ollama_memory_parser.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/chat/data/services/file_export_service.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
@@ -24,14 +25,17 @@ class ChatController {
 
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
+  final FileExportService _fileExportService;
   final Duration _incrementalSaveInterval;
 
   ChatController({
     required ChatRepository repository,
     required MediaPickerService mediaPickerService,
+    FileExportService? fileExportService,
     Duration incrementalSaveInterval = defaultIncrementalSaveInterval,
   })  : _repository = repository,
         _mediaPickerService = mediaPickerService,
+        _fileExportService = fileExportService ?? FileExportService(),
         _incrementalSaveInterval = incrementalSaveInterval;
 
   // Reactive state signals
@@ -60,6 +64,11 @@ class ChatController {
   // Conversation history
   final conversations = signal<List<Conversation>>([]);
   final currentConversationId = signal<String?>(null);
+
+  // Message selection and export state
+  final isSelectionMode = signal<bool>(false);
+  final selectedMessageIndices = signal<Set<int>>(<int>{});
+  final isExporting = signal<bool>(false);
 
   bool _stopGenerationFlag = false;
   final Set<String> _queriedMaxContextModels = <String>{};
@@ -279,6 +288,7 @@ class ChatController {
 
   /// Creates a new conversation with an empty message history.
   Future<void> createNewConversation() async {
+    exitSelectionMode();
     final now = DateTime.now();
     final modelToUse = selectedModelName.value.isNotEmpty
         ? selectedModelName.value
@@ -329,6 +339,8 @@ class ChatController {
     final conv = conversations.value.where((c) => c.id == id).firstOrNull;
     if (conv == null) return;
 
+    exitSelectionMode();
+
     currentConversationId.value = conv.id;
     chatHistory.value = List.from(conv.messages);
     if (conv.modelName.isNotEmpty) {
@@ -357,6 +369,9 @@ class ChatController {
 
   Future<void> deleteConversation(String id) async {
     if (isGenerating.value) return;
+    if (currentConversationId.value == id) {
+      exitSelectionMode();
+    }
 
     final updated = conversations.value.where((c) => c.id != id).toList();
     conversations.value = updated;
@@ -852,6 +867,152 @@ class ChatController {
   void reset() {
     if (isGenerating.value) return;
     _repository.reset();
+  }
+
+  /// Whether the message at [index] can be selected for export.
+  bool isMessageSelectable(int index) {
+    final messages = chatHistory.value;
+    if (index < 0 || index >= messages.length) return false;
+    return messages[index].isExportable;
+  }
+
+  /// Indices of all exportable user and assistant messages in the active chat.
+  List<int> get selectableMessageIndices {
+    final messages = chatHistory.value;
+    return [
+      for (var i = 0; i < messages.length; i++)
+        if (messages[i].isExportable) i,
+    ];
+  }
+
+  /// Whether the active conversation has at least one exportable message.
+  bool get hasExportableMessages => selectableMessageIndices.isNotEmpty;
+
+  /// Number of currently selected messages in selection mode.
+  int get selectedMessageCount => selectedMessageIndices.value.length;
+
+  /// Whether every selectable message in the active chat is selected.
+  bool get areAllMessagesSelected {
+    final selectable = selectableMessageIndices;
+    if (selectable.isEmpty) return false;
+    final selected = selectedMessageIndices.value;
+    return selectable.every(selected.contains);
+  }
+
+  /// Whether the message at [index] is currently marked for export.
+  bool isMessageSelected(int index) =>
+      selectedMessageIndices.value.contains(index);
+
+  /// Activates message selection mode, optionally pre-selecting [initialMessageIndex].
+  void enterSelectionMode({int? initialMessageIndex}) {
+    if (isGenerating.value || isExporting.value) return;
+
+    if (initialMessageIndex != null) {
+      if (!isMessageSelectable(initialMessageIndex)) return;
+      selectedMessageIndices.value = <int>{initialMessageIndex};
+      isSelectionMode.value = true;
+      return;
+    }
+
+    if (!hasExportableMessages) return;
+    selectedMessageIndices.value = <int>{};
+    isSelectionMode.value = true;
+  }
+
+  /// Exits selection mode and clears all marked message indices.
+  void exitSelectionMode() {
+    if (!isSelectionMode.value && selectedMessageIndices.value.isEmpty) return;
+    isSelectionMode.value = false;
+    selectedMessageIndices.value = <int>{};
+  }
+
+  /// Toggles selection state for the message at [index].
+  void toggleMessageSelection(int index) {
+    if (!isSelectionMode.value || !isMessageSelectable(index)) return;
+    final updated = Set<int>.from(selectedMessageIndices.value);
+    if (!updated.add(index)) {
+      updated.remove(index);
+    }
+    selectedMessageIndices.value = updated;
+  }
+
+  /// Marks all selectable messages in the active chat.
+  void selectAllMessages() {
+    final selectable = selectableMessageIndices;
+    if (selectable.isEmpty) return;
+    if (!isSelectionMode.value) {
+      isSelectionMode.value = true;
+    }
+    selectedMessageIndices.value = selectable.toSet();
+  }
+
+  /// Clears all selected messages while keeping selection mode open.
+  void deselectAllMessages() {
+    if (selectedMessageIndices.value.isEmpty) return;
+    selectedMessageIndices.value = <int>{};
+  }
+
+  /// Selects all messages if any are unselected, otherwise clears the selection.
+  void toggleSelectAllMessages() {
+    if (areAllMessagesSelected) {
+      deselectAllMessages();
+    } else {
+      selectAllMessages();
+    }
+  }
+
+  /// Exports the full active conversation to a local Markdown file.
+  Future<bool> exportFullConversation() async {
+    if (isGenerating.value || isExporting.value || !hasExportableMessages) {
+      return false;
+    }
+
+    isExporting.value = true;
+    try {
+      final title = currentConversation?.title ?? 'Nova Conversa';
+      final messages = List<ChatMessage>.from(chatHistory.value);
+      final saved = await _fileExportService.exportConversationMessages(
+        title: title,
+        messages: messages,
+      );
+      if (saved && isSelectionMode.value) {
+        exitSelectionMode();
+      }
+      return saved;
+    } catch (e) {
+      errorMessage.value = 'Erro ao exportar conversa: $e';
+      return false;
+    } finally {
+      isExporting.value = false;
+    }
+  }
+
+  /// Exports the currently selected messages to a local file and closes
+  /// selection mode on success.
+  Future<bool> exportSelectedMessages() async {
+    if (isGenerating.value || isExporting.value) return false;
+    final selected = Set<int>.from(selectedMessageIndices.value);
+    if (selected.isEmpty) return false;
+
+    isExporting.value = true;
+    try {
+      final title = currentConversation?.title ?? 'Nova Conversa';
+      final messages = List<ChatMessage>.from(chatHistory.value);
+      final saved = await _fileExportService.exportSelectedMessages(
+        conversationTitle: title,
+        allMessages: messages,
+        selectedIndices: selected,
+      );
+      if (saved) {
+        exitSelectionMode();
+      }
+      return saved;
+    } catch (e) {
+      errorMessage.value = 'Erro ao exportar mensagens: $e';
+      return false;
+    } finally {
+      isExporting.value = false;
+    }
   }
 
   void dispose() {

@@ -9,10 +9,14 @@ class ThinkingBlockWidget extends StatefulWidget {
   /// Whether the model is currently streaming reasoning tokens.
   final bool isThinking;
 
+  /// Whether tapping the header toggles expansion.
+  final bool isInteractive;
+
   const ThinkingBlockWidget({
     super.key,
     required this.thinkingContent,
     required this.isThinking,
+    this.isInteractive = true,
   });
 
   @override
@@ -56,7 +60,7 @@ class _ThinkingBlockWidgetState extends State<ThinkingBlockWidget> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: _toggleExpanded,
+            onTap: widget.isInteractive ? _toggleExpanded : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 10.0,

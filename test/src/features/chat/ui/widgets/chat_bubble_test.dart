@@ -168,5 +168,79 @@ void main() {
       expect(find.byType(ThinkingBlockWidget), findsNothing);
       expect(find.byType(GptMarkdown), findsOneWidget);
     });
+
+    testWidgets('triggers onLongPress on user and assistant bubbles outside selection mode', (tester) async {
+      var userLongPressed = 0;
+      var assistantLongPressed = 0;
+
+      await tester.pumpWidget(
+        buildTestableWidget(
+          Column(
+            children: [
+              ChatBubble(
+                message: ChatMessage(content: 'Pergunta do usuário', isUser: true),
+                onLongPress: () => userLongPressed++,
+              ),
+              ChatBubble(
+                message: ChatMessage(content: 'Resposta do assistente', isUser: false),
+                onLongPress: () => assistantLongPressed++,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Pergunta do usuário'));
+      await tester.longPress(find.text('Resposta do assistente'));
+
+      expect(userLongPressed, 1);
+      expect(assistantLongPressed, 1);
+    });
+
+    testWidgets('renders Checkbox and toggles selection on tap anywhere on row while omitting Checkbox for system banners', (tester) async {
+      var userToggled = 0;
+      var assistantToggled = 0;
+
+      await tester.pumpWidget(
+        buildTestableWidget(
+          Column(
+            children: [
+              ChatBubble(
+                message: ChatMessage(content: 'Sistema: Modelo carregado', isUser: false),
+                isSelectionMode: true,
+                isSelectable: false,
+                onToggleSelection: () {},
+              ),
+              ChatBubble(
+                message: ChatMessage(content: 'Oi', isUser: true),
+                isSelectionMode: true,
+                isSelected: true,
+                onToggleSelection: () => userToggled++,
+              ),
+              ChatBubble(
+                message: ChatMessage(content: 'Resposta longa aqui', isUser: false),
+                isSelectionMode: true,
+                isSelected: false,
+                onToggleSelection: () => assistantToggled++,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Checkbox), findsNWidgets(2));
+
+      // Tapping Checkbox toggles once.
+      await tester.tap(find.byType(Checkbox).first);
+      // Tapping bubble text/copy area in selection mode toggles selection instead of copying.
+      await tester.tap(find.text('Copiar'));
+      await tester.pump();
+
+      expect(userToggled, 1);
+      expect(assistantToggled, 1);
+      expect(find.text('Mensagem copiada para a área de transferência!'), findsNothing);
+    });
   });
 }

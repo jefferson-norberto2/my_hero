@@ -8,6 +8,7 @@ import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
 import 'package:my_hero/src/features/chat/data/services/aes_gcm_encryption_service.dart';
 import 'package:my_hero/src/features/chat/data/services/encryption_key_manager.dart';
+import 'package:my_hero/src/features/chat/data/services/file_export_service.dart';
 import 'package:my_hero/src/features/chat/data/services/foreground_task_manager.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
@@ -38,6 +39,9 @@ Future<void> setupDependencies() async {
   // Features - Chat - Data
   getIt.registerLazySingleton<ForegroundTaskManager>(
     () => ForegroundTaskManager(),
+  );
+  getIt.registerLazySingleton<FileExportService>(
+    () => FileExportService(),
   );
   getIt.registerLazySingleton<EncryptionKeyManager>(
     () => EncryptionKeyManager(secureStorage: getIt<FlutterSecureStorage>()),
@@ -85,6 +89,7 @@ Future<void> setupDependencies() async {
     () => ChatController(
       repository: getIt<ChatRepository>(),
       mediaPickerService: getIt<MediaPickerService>(),
+      fileExportService: getIt<FileExportService>(),
     ),
   );
 

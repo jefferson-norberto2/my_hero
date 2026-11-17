@@ -6,13 +6,26 @@ import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart
 import 'package:my_hero/src/features/chat/ui/widgets/thinking_block_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Displays an individual user, assistant, or system message in the chat list.
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final bool isSelectable;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onToggleSelection;
 
-  const ChatBubble({super.key, required this.message});
+  const ChatBubble({
+    super.key,
+    required this.message,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.isSelectable = true,
+    this.onLongPress,
+    this.onToggleSelection,
+  });
 
-  bool get _isSystemMessage =>
-      !message.isUser && message.content.startsWith('Sistema:');
+  bool get _isSystemMessage => message.isSystemMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -27,34 +40,36 @@ class ChatBubble extends StatelessWidget {
     final isWaitingFirstToken =
         !isUser && message.content.isEmpty && !hasThinking;
 
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isUser
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6)
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 16),
-          ),
-          border: Border.all(
-            color: isUser
-                ? theme.colorScheme.primary.withValues(alpha: 0.15)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            width: 1,
-          ),
+    final borderColor = isSelected
+        ? theme.colorScheme.primary
+        : (isUser
+            ? theme.colorScheme.primary.withValues(alpha: 0.15)
+            : theme.colorScheme.outlineVariant.withValues(alpha: 0.4));
+
+    final bubbleContainer = Container(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isUser
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6)
+            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(16),
+          topRight: const Radius.circular(16),
+          bottomLeft: Radius.circular(isUser ? 16 : 4),
+          bottomRight: Radius.circular(isUser ? 4 : 16),
         ),
-        child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        border: Border.all(
+          color: borderColor,
+          width: isSelected ? 1.8 : 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
             if (message.attachment != null && message.attachment!.type != AttachmentType.image)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
@@ -123,6 +138,7 @@ class ChatBubble extends StatelessWidget {
                 child: ThinkingBlockWidget(
                   thinkingContent: message.thinkingContent,
                   isThinking: message.isThinking,
+                  isInteractive: !isSelectionMode,
                 ),
               ),
             if (isWaitingFirstToken)
@@ -144,7 +160,9 @@ class ChatBubble extends StatelessWidget {
                   fontSize: 15,
                   height: 1.4,
                 ),
-                onLinkTap: (url, _) => _handleLinkTap(context, url),
+                onLinkTap: isSelectionMode
+                    ? null
+                    : (url, _) => _handleLinkTap(context, url),
               ),
             if (!isUser && message.content.isNotEmpty)
               Align(
@@ -153,7 +171,9 @@ class ChatBubble extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 4.0),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () => _copyToClipboard(context, message.content),
+                    onTap: isSelectionMode
+                        ? null
+                        : () => _copyToClipboard(context, message.content),
                     child: Padding(
                       padding: const EdgeInsets.all(4.0),
                       child: Row(
@@ -179,6 +199,51 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
           ],
+      ),
+    );
+
+    if (!isSelectionMode) {
+      return Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          onLongPress: isSelectable ? onLongPress : null,
+          child: bubbleContainer,
+        ),
+      );
+    }
+
+    return SelectionContainer.disabled(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Material(
+          color: isSelected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: isSelectable ? onToggleSelection : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged:
+                        isSelectable ? (_) => onToggleSelection?.call() : null,
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment:
+                          isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: bubbleContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
@@ -73,6 +74,16 @@ void main() {
 
       await datasource.saveServerMemoryLimitGb(null);
       expect(await datasource.getServerMemoryLimitGb(), isNull);
+    });
+
+    test('themeMode defaults to light and persists dark/light round-trip', () async {
+      expect(await datasource.getThemeMode(), ThemeMode.light);
+
+      await datasource.saveThemeMode(ThemeMode.dark);
+      expect(await datasource.getThemeMode(), ThemeMode.dark);
+
+      await datasource.saveThemeMode(ThemeMode.light);
+      expect(await datasource.getThemeMode(), ThemeMode.light);
     });
   });
 }

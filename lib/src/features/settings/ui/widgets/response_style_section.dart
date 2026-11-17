@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/shared/models/response_style.dart';
 
 /// Card section displaying the segmented response style selector and description.
@@ -14,27 +15,25 @@ class ResponseStyleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
 
     return Card(
       elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      color: appColors.sectionCardBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        side: BorderSide(color: appColors.sectionCardBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.auto_awesome_outlined, color: Colors.teal),
-                SizedBox(width: 8),
-                Text(
+                Icon(Icons.auto_awesome_outlined, color: appColors.accent),
+                const SizedBox(width: 8),
+                const Text(
                   'Estilo de Resposta',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
@@ -69,7 +68,7 @@ class ResponseStyleSection extends StatelessWidget {
               selectedStyle.description,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.teal.shade800,
+                color: appColors.infoSubtext,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -77,18 +76,18 @@ class ResponseStyleSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.teal.shade50,
+                color: appColors.infoSurface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.teal.shade200),
+                border: Border.all(color: appColors.infoBorder),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.sync, color: Colors.teal, size: 22),
-                  SizedBox(width: 10),
+                  Icon(Icons.sync, color: appColors.infoIcon, size: 22),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'O contexto desta conversa e o novo modelo serão mantidos para as próximas perguntas.',
-                      style: TextStyle(fontSize: 12, color: Colors.black87),
+                      style: TextStyle(fontSize: 12, color: appColors.infoText),
                     ),
                   ),
                 ],

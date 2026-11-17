@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Persists application-wide settings such as the Ollama server URL,
-/// context window preferences, and optional hardware memory ceiling.
+/// context window preferences, theme mode, and optional hardware memory ceiling.
 abstract class SettingsDatasource {
   Future<String> getOllamaBaseUrl();
   Future<void> saveOllamaBaseUrl(String url);
@@ -15,6 +16,8 @@ abstract class SettingsDatasource {
   Future<void> saveManualContextLength(int length);
   Future<double?> getServerMemoryLimitGb();
   Future<void> saveServerMemoryLimitGb(double? limitGb);
+  Future<ThemeMode> getThemeMode();
+  Future<void> saveThemeMode(ThemeMode mode);
 }
 
 class SettingsDatasourceImpl implements SettingsDatasource {
@@ -23,6 +26,7 @@ class SettingsDatasourceImpl implements SettingsDatasource {
   static const String _contextModeKey = 'context_mode';
   static const String _manualContextLengthKey = 'manual_context_length';
   static const String _serverMemoryLimitGbKey = 'server_memory_limit_gb';
+  static const String _themeModeKey = 'theme_mode';
 
   Future<File> _getFile() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -114,5 +118,22 @@ class SettingsDatasourceImpl implements SettingsDatasource {
         map[_serverMemoryLimitGbKey] = limitGb;
       }
     });
+  }
+
+  @override
+  Future<ThemeMode> getThemeMode() async {
+    final map = await _readSettingsMap();
+    final raw = map[_themeModeKey] as String?;
+    if (raw == ThemeMode.dark.name) {
+      return ThemeMode.dark;
+    }
+    return ThemeMode.light;
+  }
+
+  @override
+  Future<void> saveThemeMode(ThemeMode mode) {
+    final normalized =
+        mode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light;
+    return _updateSettingsMap((map) => map[_themeModeKey] = normalized.name);
   }
 }

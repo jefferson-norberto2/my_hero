@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
@@ -47,15 +48,14 @@ class OllamaModelSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
 
     return Card(
       elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      color: appColors.sectionCardBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        side: BorderSide(color: appColors.sectionCardBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -64,7 +64,7 @@ class OllamaModelSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.hub_outlined, color: Colors.teal),
+                Icon(Icons.hub_outlined, color: appColors.accent),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
@@ -94,11 +94,11 @@ class OllamaModelSection extends StatelessWidget {
               _buildDisconnectedState(theme)
             else ...[
               if (models.isEmpty)
-                _buildEmptyState()
+                _buildEmptyState(theme, appColors)
               else
-                _buildModelControls(theme),
+                _buildModelControls(theme, appColors),
               const Divider(height: 24),
-              _buildModelPullSection(theme),
+              _buildModelPullSection(theme, appColors),
             ],
             if (loadErrorMessage != null) ...[
               const SizedBox(height: 12),
@@ -154,10 +154,10 @@ class OllamaModelSection extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(ThemeData theme, AppThemeColors appColors) {
     return Column(
       children: [
-        const Icon(Icons.psychology_alt, color: Colors.teal, size: 36),
+        Icon(Icons.psychology_alt, color: appColors.accent, size: 36),
         const SizedBox(height: 8),
         const Text(
           'Nenhum modelo encontrado no Ollama',
@@ -165,10 +165,13 @@ class OllamaModelSection extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Baixe um modelo diretamente abaixo ou pelo terminal (ex: llama3.2:3b).',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
@@ -180,7 +183,7 @@ class OllamaModelSection extends StatelessWidget {
     );
   }
 
-  Widget _buildModelControls(ThemeData theme) {
+  Widget _buildModelControls(ThemeData theme, AppThemeColors appColors) {
     final effectiveSelected = models.any((m) => m.name == selectedModelName)
         ? selectedModelName
         : models.first.name;
@@ -189,6 +192,9 @@ class OllamaModelSection extends StatelessWidget {
             models.first;
     final isSelectedLoaded = selectedModelObj.isLoaded ||
         (selectedModelObj.name == selectedModelName && isModelLoaded);
+    final inputFillColor = theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHighest
+        : theme.colorScheme.surface;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,13 +205,14 @@ class OllamaModelSection extends StatelessWidget {
           ),
           isExpanded: true,
           initialValue: effectiveSelected,
+          dropdownColor: theme.colorScheme.surface,
           decoration: InputDecoration(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             labelText: 'Selecione o modelo',
             filled: true,
-            fillColor: theme.colorScheme.surface,
+            fillColor: inputFillColor,
           ),
           selectedItemBuilder: (context) {
             return models.map((OllamaModel model) {
@@ -243,12 +250,12 @@ class OllamaModelSection extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.teal.withValues(alpha: 0.15),
+                        color: appColors.accent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         model.parameterSize!,
-                        style: const TextStyle(fontSize: 11, color: Colors.teal),
+                        style: TextStyle(fontSize: 11, color: appColors.accent),
                       ),
                     ),
                   ],
@@ -260,19 +267,19 @@ class OllamaModelSection extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.2),
+                        color: appColors.success.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.bolt, size: 12, color: Colors.green),
-                          SizedBox(width: 2),
+                          Icon(Icons.bolt, size: 12, color: appColors.success),
+                          const SizedBox(width: 2),
                           Text(
                             'Carregado',
                             style: TextStyle(
                               fontSize: 10,
-                              color: Colors.green,
+                              color: appColors.success,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -296,16 +303,16 @@ class OllamaModelSection extends StatelessWidget {
         Row(
           children: [
             if (isSelectedLoaded)
-              const Expanded(
+              Expanded(
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 18),
-                    SizedBox(width: 6),
+                    Icon(Icons.check_circle, color: appColors.success, size: 18),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'Já carregado na memória do PC',
                         style: TextStyle(
-                          color: Colors.green,
+                          color: appColors.success,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -315,10 +322,13 @@ class OllamaModelSection extends StatelessWidget {
                 ),
               )
             else
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Será carregado na memória ao usar',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             const SizedBox(width: 12),
@@ -346,9 +356,12 @@ class OllamaModelSection extends StatelessWidget {
     );
   }
 
-  Widget _buildModelPullSection(ThemeData theme) {
+  Widget _buildModelPullSection(ThemeData theme, AppThemeColors appColors) {
     final isDownloading = downloadState.isActive;
     final percent = downloadState.progressPercent;
+    final inputFillColor = theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHighest
+        : theme.colorScheme.surface;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -374,7 +387,7 @@ class OllamaModelSection extends StatelessWidget {
                     labelText: 'Baixar novo modelo',
                     hintText: 'Ex: llama3.2:3b',
                     filled: true,
-                    fillColor: theme.colorScheme.surface,
+                    fillColor: inputFillColor,
                   ),
                   onSubmitted: (value) {
                     if (value.trim().isNotEmpty) {
@@ -404,9 +417,9 @@ class OllamaModelSection extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               downloadState.statusMessage,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Colors.green,
+                color: appColors.success,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -415,13 +428,16 @@ class OllamaModelSection extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               downloadState.statusMessage,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ] else ...[
           Row(
             children: [
-              const Icon(Icons.downloading, color: Colors.teal, size: 18),
+              Icon(Icons.downloading, color: appColors.accent, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

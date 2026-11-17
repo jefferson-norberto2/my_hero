@@ -1,8 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
 
-/// Repository contract for managing Ollama server, context, model loading, and downloads.
+/// Repository contract for managing Ollama server, context, appearance, model loading, and downloads.
 abstract class SettingsRepository {
   String get ollamaBaseUrl;
   void updateOllamaBaseUrl(String url);
@@ -14,6 +15,8 @@ abstract class SettingsRepository {
   Future<void> saveManualContextLength(int length);
   Future<double?> loadServerMemoryLimitGb();
   Future<void> saveServerMemoryLimitGb(double? limitGb);
+  Future<ThemeMode> loadThemeMode();
+  Future<void> saveThemeMode(ThemeMode mode);
   Future<bool> checkOllamaHealth([String? customUrl]);
   Future<List<OllamaModel>> getAvailableModels();
   Future<int> getModelMaxContextLength(String modelName);

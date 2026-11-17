@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 
 /// Card section displaying Ollama server address, optional hardware memory cap,
 /// and an inline IP editor.
@@ -45,15 +46,17 @@ class OllamaServerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
+    final inputFillColor = theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHighest
+        : theme.colorScheme.surface;
 
     return Card(
       elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      color: appColors.sectionCardBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        side: BorderSide(color: appColors.sectionCardBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -64,7 +67,7 @@ class OllamaServerSection extends StatelessWidget {
               children: [
                 Icon(
                   Icons.dns_rounded,
-                  color: isConnected ? Colors.teal : Colors.orange,
+                  color: isConnected ? appColors.success : appColors.warning,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -86,8 +89,8 @@ class OllamaServerSection extends StatelessWidget {
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: isConnected
-                              ? Colors.teal.shade700
-                              : Colors.orange.shade800,
+                              ? appColors.success
+                              : appColors.warning,
                         ),
                       ),
                     ],
@@ -129,7 +132,7 @@ class OllamaServerSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
-                fillColor: theme.colorScheme.surface,
+                fillColor: inputFillColor,
               ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
@@ -179,7 +182,7 @@ class OllamaServerSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: theme.colorScheme.surface,
+                  fillColor: inputFillColor,
                 ),
                 keyboardType: TextInputType.url,
                 onChanged: (_) => onHostTextChanged(),
@@ -202,21 +205,23 @@ class OllamaServerSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+                  color: appColors.infoSurface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                  ),
+                  border: Border.all(color: appColors.infoBorder),
                 ),
-                child: const Row(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.lightbulb_outline, size: 20, color: Colors.teal),
-                    SizedBox(width: 8),
+                    Icon(
+                      Icons.lightbulb_outline,
+                      size: 20,
+                      color: appColors.infoIcon,
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Dica para conexão de rede: Na máquina onde o Ollama roda, certifique-se de iniciar o serviço com `OLLAMA_HOST=0.0.0.0 ollama serve` para aceitar conexões da rede local.',
-                        style: TextStyle(fontSize: 11),
+                        style: TextStyle(fontSize: 11, color: appColors.infoText),
                       ),
                     ),
                   ],
@@ -228,13 +233,13 @@ class OllamaServerSection extends StatelessWidget {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: testSuccess == true
-                        ? Colors.teal.shade50
-                        : Colors.red.shade50,
+                        ? appColors.infoSurface
+                        : theme.colorScheme.errorContainer.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: testSuccess == true
-                          ? Colors.teal.shade300
-                          : Colors.red.shade300,
+                          ? appColors.infoBorder
+                          : theme.colorScheme.error.withValues(alpha: 0.4),
                     ),
                   ),
                   child: Row(
@@ -244,8 +249,8 @@ class OllamaServerSection extends StatelessWidget {
                             ? Icons.check_circle_outline
                             : Icons.error_outline,
                         color: testSuccess == true
-                            ? Colors.teal.shade800
-                            : Colors.red.shade800,
+                            ? appColors.success
+                            : theme.colorScheme.error,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -255,8 +260,8 @@ class OllamaServerSection extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             color: testSuccess == true
-                                ? Colors.teal.shade900
-                                : Colors.red.shade900,
+                                ? appColors.infoText
+                                : theme.colorScheme.onErrorContainer,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -285,12 +290,12 @@ class OllamaServerSection extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: isApplying ? null : onApplyHost,
                     icon: isApplying
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: theme.colorScheme.onPrimary,
                             ),
                           )
                         : const Icon(Icons.check, size: 18),

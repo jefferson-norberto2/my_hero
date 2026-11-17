@@ -2,23 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_hero/src/core/routes/app_routes.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
+import 'package:my_hero/src/core/theme/theme_controller.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
+import 'package:my_hero/src/features/settings/ui/widgets/appearance_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/context_window_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_model_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_server_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/response_style_section.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
-/// Full-page settings screen centralizing model, response style, context window, and server controls.
+/// Full-page settings screen centralizing model, response style, context window, server, and appearance controls.
 class SettingsScreen extends StatefulWidget {
   final SettingsArgs? initialArgs;
   final SettingsController? controller;
+  final ThemeController? themeController;
 
   const SettingsScreen({
     super.key,
     this.initialArgs,
     this.controller,
+    this.themeController,
   });
 
   @override
@@ -27,6 +32,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsController _controller;
+  ThemeController? _themeController;
+  final Signal<ThemeMode> _fallbackThemeMode = signal<ThemeMode>(ThemeMode.light);
   late final TextEditingController _hostController;
   late final TextEditingController _memoryLimitController;
   late final TextEditingController _pullModelController;
@@ -43,6 +50,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _controller = widget.controller ?? GetIt.I<SettingsController>();
+    _themeController = widget.themeController ??
+        (GetIt.I.isRegistered<ThemeController>()
+            ? GetIt.I<ThemeController>()
+            : null);
     _hostController = TextEditingController();
     _memoryLimitController = TextEditingController();
     _pullModelController = TextEditingController();
@@ -103,9 +114,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _handleThemeModeChanged(ThemeMode mode) {
+    final controller = _themeController;
+    if (controller != null) {
+      controller.setThemeMode(mode);
+    } else {
+      _fallbackThemeMode.value = mode;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
 
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
@@ -114,19 +135,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Voltar',
             onPressed: _isSaving ? null : _handleCancel,
           ),
-          title: const Row(
+          title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.tune, color: Colors.teal),
-              SizedBox(width: 8),
-              Flexible(
+              Icon(Icons.tune, color: appColors.accent),
+              const SizedBox(width: 8),
+              const Flexible(
                 child: Text(
                   'Configurações da Conversa',
                   overflow: TextOverflow.ellipsis,
@@ -134,7 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          backgroundColor: theme.colorScheme.inversePrimary,
         ),
         body: Column(
           children: [
@@ -178,6 +197,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _controller.connectionTestSuccess.value;
                         final testMessage =
                             _controller.connectionTestMessage.value;
+                        final selectedThemeMode =
+                            _themeController?.themeMode.value ??
+                                _fallbackThemeMode.value;
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -205,6 +227,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ResponseStyleSection(
                               selectedStyle: selectedStyle,
                               onStyleChanged: _controller.selectResponseStyle,
+                            ),
+                            const SizedBox(height: 12),
+                            AppearanceSection(
+                              selectedThemeMode: selectedThemeMode,
+                              onThemeModeChanged: _handleThemeModeChanged,
                             ),
                             const SizedBox(height: 12),
                             ContextWindowSection(
@@ -272,7 +299,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
+            color: theme.scaffoldBackgroundColor,
             border: Border(
               top: BorderSide(
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
@@ -314,12 +341,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ),
                           child: _isSaving
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: theme.colorScheme.onPrimary,
                                   ),
                                 )
                               : const Text('Salvar'),

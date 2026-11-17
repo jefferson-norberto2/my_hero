@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
@@ -163,6 +164,20 @@ void main() {
       verify(() => mockModelDownloadService.downloadModel('llama3.2:3b'))
           .called(1);
       verify(() => mockModelDownloadService.cancelDownload()).called(1);
+    });
+
+    test('loadThemeMode and saveThemeMode delegate to settings datasource', () async {
+      when(() => mockSettingsDatasource.getThemeMode())
+          .thenAnswer((_) async => ThemeMode.dark);
+      when(() => mockSettingsDatasource.saveThemeMode(ThemeMode.light))
+          .thenAnswer((_) async {});
+
+      expect(await repository.loadThemeMode(), ThemeMode.dark);
+      await repository.saveThemeMode(ThemeMode.light);
+
+      verify(() => mockSettingsDatasource.getThemeMode()).called(1);
+      verify(() => mockSettingsDatasource.saveThemeMode(ThemeMode.light))
+          .called(1);
     });
   });
 }

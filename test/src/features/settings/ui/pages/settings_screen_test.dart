@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/theme/app_theme.dart';
+import 'package:my_hero/src/core/theme/theme_controller.dart';
 import 'package:my_hero/src/features/settings/controller/settings_controller.dart';
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
@@ -21,6 +22,7 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(ContextMode.automatic);
+    registerFallbackValue(ThemeMode.light);
   });
 
   const modelUnloaded = OllamaModel(
@@ -435,6 +437,59 @@ void main() {
       verify(() => mockRepository.cancelModelDownload()).called(1);
       expect(find.text('Download de llama3.2:3b cancelado.'), findsOneWidget);
       await streamCtrl.close();
+    });
+
+    testWidgets('appearance section renders Claro/Escuro options and applies theme immediately on click', (tester) async {
+      when(() => mockRepository.loadThemeMode())
+          .thenAnswer((_) async => ThemeMode.light);
+      when(() => mockRepository.saveThemeMode(any())).thenAnswer((_) async {});
+      final themeController = ThemeController(repository: mockRepository);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeMode.light,
+          home: SettingsScreen(
+            initialArgs: const SettingsArgs(
+              selectedModelName: 'mimo-v2.6:9b',
+              responseStyle: ResponseStyle.simple,
+              ollamaBaseUrl: 'http://localhost:11434',
+              availableModels: [modelUnloaded],
+            ),
+            controller: controller,
+            themeController: themeController,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Escuro'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aparência'), findsOneWidget);
+      expect(find.text('Claro'), findsOneWidget);
+      expect(find.text('Escuro'), findsOneWidget);
+      expect(find.byIcon(Icons.light_mode_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.dark_mode_outlined), findsOneWidget);
+
+      await tester.tap(find.text('Escuro'));
+      await tester.pumpAndSettle();
+
+      expect(themeController.themeMode.value, ThemeMode.dark);
+      await tester.ensureVisible(
+        find.text('Tema escuro inspirado na paleta Dracula.'),
+      );
+      expect(find.text('Tema escuro inspirado na paleta Dracula.'), findsOneWidget);
+      expect(find.byIcon(Icons.light_mode_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.dark_mode_outlined), findsOneWidget);
+      verify(() => mockRepository.saveThemeMode(ThemeMode.dark)).called(1);
+
+      await tester.ensureVisible(find.text('Claro'));
+      await tester.tap(find.text('Claro'));
+      await tester.pumpAndSettle();
+
+      expect(themeController.themeMode.value, ThemeMode.light);
+      verify(() => mockRepository.saveThemeMode(ThemeMode.light)).called(1);
     });
   });
 }

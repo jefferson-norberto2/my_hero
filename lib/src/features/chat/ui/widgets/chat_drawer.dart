@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
@@ -15,6 +16,9 @@ class ChatDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
+
     return Drawer(
       child: SafeArea(
         child: Column(
@@ -25,16 +29,15 @@ class ChatDrawer extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: const Icon(Icons.bolt, color: Colors.teal),
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(Icons.bolt, color: appColors.accent),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'My Hero',
                           style: TextStyle(
                             fontSize: 18,
@@ -43,7 +46,10 @@ class ChatDrawer extends StatelessWidget {
                         ),
                         Text(
                           'Ollama Local Chat',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -70,10 +76,12 @@ class ChatDrawer extends StatelessWidget {
                   final currentId = controller.currentConversationId.value;
 
                   if (convs.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Text(
                         'Nenhuma conversa ainda',
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     );
                   }
@@ -88,15 +96,19 @@ class ChatDrawer extends StatelessWidget {
 
                       return ListTile(
                         selected: isSelected,
-                        selectedTileColor: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withAlpha(80),
+                        selectedTileColor: theme.colorScheme.primaryContainer
+                            .withValues(
+                              alpha: theme.brightness == Brightness.dark
+                                  ? 0.55
+                                  : 0.35,
+                            ),
                         leading: Icon(
                           isSelected
                               ? Icons.chat_bubble
                               : Icons.chat_bubble_outline,
-                          color: isSelected ? Colors.teal : Colors.grey[600],
+                          color: isSelected
+                              ? appColors.accent
+                              : theme.colorScheme.onSurfaceVariant,
                         ),
                         title: Text(
                           item.title,
@@ -140,7 +152,7 @@ class ChatDrawer extends StatelessWidget {
                   enabled: !isGenerating,
                   leading: Icon(
                     Icons.dns_rounded,
-                    color: isConnected ? Colors.teal : Colors.orange,
+                    color: isConnected ? appColors.success : appColors.warning,
                   ),
                   title: const Text('Configurações'),
                   subtitle: Text(

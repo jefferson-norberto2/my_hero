@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/thinking_block_widget.dart';
@@ -35,6 +36,7 @@ class ChatBubble extends StatelessWidget {
 
     final isUser = message.isUser;
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.85;
     final hasThinking = !isUser && message.hasThinking;
     final isWaitingFirstToken =
@@ -43,8 +45,8 @@ class ChatBubble extends StatelessWidget {
     final borderColor = isSelected
         ? theme.colorScheme.primary
         : (isUser
-            ? theme.colorScheme.primary.withValues(alpha: 0.15)
-            : theme.colorScheme.outlineVariant.withValues(alpha: 0.4));
+            ? appColors.userBubbleBorder
+            : appColors.assistantBubbleBorder);
 
     final bubbleContainer = Container(
       constraints: BoxConstraints(maxWidth: maxWidth),
@@ -52,8 +54,8 @@ class ChatBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: isUser
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            ? appColors.userBubbleBackground
+            : appColors.assistantBubbleBackground,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(16),
           topRight: const Radius.circular(16),
@@ -76,12 +78,12 @@ class ChatBubble extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surface.withValues(alpha: 0.7),
+                    color: theme.colorScheme.surface.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: message.attachment!.type == AttachmentType.audio
-                          ? Colors.amber.shade700.withValues(alpha: 0.4)
-                          : Colors.teal.shade700.withValues(alpha: 0.4),
+                          ? appColors.audioAccent.withValues(alpha: 0.45)
+                          : appColors.documentAccent.withValues(alpha: 0.45),
                     ),
                   ),
                   child: Row(
@@ -92,8 +94,8 @@ class ChatBubble extends StatelessWidget {
                             ? Icons.audiotrack_rounded
                             : Icons.description_rounded,
                         color: message.attachment!.type == AttachmentType.audio
-                            ? Colors.amber.shade800
-                            : Colors.teal,
+                            ? appColors.audioAccent
+                            : appColors.documentAccent,
                         size: 24,
                       ),
                       const SizedBox(width: 8),

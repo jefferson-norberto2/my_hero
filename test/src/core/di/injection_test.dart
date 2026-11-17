@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/di/injection.dart';
+import 'package:my_hero/src/core/theme/theme_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
@@ -80,5 +82,16 @@ void main() {
     expect(loaded.first.id, 'di-legacy-1');
     expect(loaded.first.title, 'Migrated on Boot');
     expect(loaded.first.messages.first.text, 'Sensitive history');
+  });
+
+  test('setupDependencies registers ThemeController and preloads persisted dark theme before render', () async {
+    final settingsFile = File('${documentsDir.path}/app_settings.json');
+    await settingsFile.writeAsString(jsonEncode({'theme_mode': 'dark'}));
+
+    await setupDependencies();
+
+    expect(getIt.isRegistered<ThemeController>(), isTrue);
+    expect(getIt<ThemeController>().themeMode.value, ThemeMode.dark);
+    expect(getIt<ThemeController>().isDarkMode, isTrue);
   });
 }

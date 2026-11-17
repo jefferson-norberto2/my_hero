@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../controller/chat_controller.dart';
-import '../../data/adapter/chat_attachment.dart';
 
 class ChatInputBar extends StatefulWidget {
   final ChatController controller;
@@ -34,6 +35,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _showAttachmentOptions() {
+    final appColors = AppThemeColors.of(context);
+
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -55,10 +58,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.15),
+                    color: appColors.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.image_rounded, color: Colors.teal),
+                  child: Icon(Icons.image_rounded, color: appColors.accent),
                 ),
                 title: const Text('Imagem'),
                 subtitle: const Text('Foto da galeria ou da câmera'),
@@ -72,10 +75,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
+                    color: appColors.audioAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.audiotrack_rounded, color: Colors.amber.shade800),
+                  child: Icon(
+                    Icons.audiotrack_rounded,
+                    color: appColors.audioAccent,
+                  ),
                 ),
                 title: const Text('Áudio'),
                 subtitle: const Text('Arquivo de áudio (.mp3, .wav, etc.)'),
@@ -88,10 +94,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.15),
+                    color: appColors.documentAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.description_rounded, color: Colors.blue),
+                  child: Icon(
+                    Icons.description_rounded,
+                    color: appColors.documentAccent,
+                  ),
                 ),
                 title: const Text('Documento ou Código'),
                 subtitle: const Text('Código-fonte, texto, PDF (.dart, .py, .txt, etc.)'),
@@ -109,6 +118,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _showImagePickerSubmenu() {
+    final appColors = AppThemeColors.of(context);
+
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -119,7 +130,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_library_rounded, color: Colors.teal),
+                leading: Icon(Icons.photo_library_rounded, color: appColors.accent),
                 title: const Text('Galeria de fotos'),
                 subtitle: const Text('Selecione uma imagem do computador'),
                 onTap: () {
@@ -128,7 +139,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.camera_alt_rounded, color: Colors.teal),
+                leading: Icon(Icons.camera_alt_rounded, color: appColors.accent),
                 title: const Text('Câmera'),
                 subtitle: const Text('Tirar foto agora'),
                 onTap: () {
@@ -145,6 +156,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   Widget _buildAttachmentPreview(BuildContext context, ChatAttachment attachment) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
 
     Widget leadingWidget;
     String subtitleText;
@@ -167,10 +179,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: Colors.amber.shade100,
+            color: appColors.audioSurface,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(Icons.audiotrack_rounded, color: Colors.amber.shade800, size: 28),
+          child: Icon(
+            Icons.audiotrack_rounded,
+            color: appColors.audioAccent,
+            size: 28,
+          ),
         );
         subtitleText = 'Áudio (${attachment.sizeFormatted})';
         break;
@@ -179,10 +195,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: Colors.blue.shade100,
+            color: appColors.documentSurface,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.description_rounded, color: Colors.blue, size: 28),
+          child: Icon(
+            Icons.description_rounded,
+            color: appColors.documentAccent,
+            size: 28,
+          ),
         );
         subtitleText = attachment.textContent != null
             ? 'Documento/Código (${attachment.sizeFormatted}) • Texto extraído'
@@ -201,7 +221,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               color: theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.teal.withValues(alpha: 0.5),
+                color: appColors.accent.withValues(alpha: 0.5),
                 width: 1.5,
               ),
             ),
@@ -221,7 +241,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelMedium?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.teal.shade800,
+                          color: appColors.infoSubtext,
                         ),
                       ),
                       Text(
@@ -251,10 +271,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   shape: BoxShape.circle,
                 ),
                 padding: const EdgeInsets.all(4),
-                child: const Icon(
+                child: Icon(
                   Icons.close_rounded,
                   size: 14,
-                  color: Colors.white,
+                  color: theme.colorScheme.onError,
                 ),
               ),
             ),
@@ -266,6 +286,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = AppThemeColors.of(context);
+
     return SignalBuilder(
       builder: (context) {
         final isModelLoaded = widget.controller.isModelLoaded.value;
@@ -324,7 +346,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     children: [
                       IconButton(
                         onPressed: canType ? _showAttachmentOptions : null,
-                        color: Colors.teal,
+                        color: appColors.accent,
                         tooltip: 'Anexar arquivo (Imagem, Áudio ou Documento)',
                         icon: const Icon(Icons.attach_file_rounded),
                       ),
@@ -333,7 +355,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           !isGenerating ? Icons.send : Icons.stop_circle_rounded,
                         ),
                         tooltip: !isGenerating ? 'Enviar mensagem (Ctrl+Enter)' : 'Parar geração',
-                        color: !isGenerating ? Colors.teal : Colors.red,
+                        color: !isGenerating ? appColors.accent : appColors.danger,
                         onPressed: !isModelLoaded
                             ? null
                             : (!isGenerating ? _handleSend : widget.controller.stopGeneration),

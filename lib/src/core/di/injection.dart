@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:my_hero/src/core/network/dio_client.dart';
+import 'package:my_hero/src/core/theme/theme_controller.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
@@ -80,6 +81,9 @@ Future<void> setupDependencies() async {
   );
 
   // Features - Settings - Controller
+  getIt.registerLazySingleton<ThemeController>(
+    () => ThemeController(repository: getIt<SettingsRepository>()),
+  );
   getIt.registerFactory<SettingsController>(
     () => SettingsController(repository: getIt<SettingsRepository>()),
   );
@@ -92,6 +96,9 @@ Future<void> setupDependencies() async {
       fileExportService: getIt<FileExportService>(),
     ),
   );
+
+  // Preload saved theme preference before the first frame to avoid flicker.
+  await getIt<ThemeController>().loadThemeMode();
 
   // Initialize Android foreground task configuration (no-op on desktop platforms).
   await getIt<ForegroundTaskManager>().initialize();

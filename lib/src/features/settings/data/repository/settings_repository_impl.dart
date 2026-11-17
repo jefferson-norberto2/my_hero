@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:my_hero/src/features/chat/data/datasource/ollama_remote_datasource.dart';
 import 'package:my_hero/src/features/settings/data/datasource/settings_datasource.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
@@ -70,6 +71,16 @@ class SettingsRepositoryImpl implements SettingsRepository {
   @override
   Future<void> saveServerMemoryLimitGb(double? limitGb) {
     return _settingsDatasource.saveServerMemoryLimitGb(limitGb);
+  }
+
+  @override
+  Future<ThemeMode> loadThemeMode() {
+    return _settingsDatasource.getThemeMode();
+  }
+
+  @override
+  Future<void> saveThemeMode(ThemeMode mode) {
+    return _settingsDatasource.saveThemeMode(mode);
   }
 
   @override

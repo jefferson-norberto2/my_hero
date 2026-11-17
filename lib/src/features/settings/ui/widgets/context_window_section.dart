@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 
 /// Card section allowing selection between dynamic automatic `num_ctx` scaling
@@ -30,28 +31,27 @@ class ContextWindowSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
     final allowedPresets =
         ContextSettings.availablePresetsForModel(maxModelContext);
 
     return Card(
       elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      color: appColors.sectionCardBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        side: BorderSide(color: appColors.sectionCardBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.data_usage_rounded, color: Colors.teal),
-                SizedBox(width: 8),
-                Expanded(
+                Icon(Icons.data_usage_rounded, color: appColors.accent),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     'Janela de Contexto',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -83,7 +83,7 @@ class ContextWindowSection extends StatelessWidget {
               selectedMode.description,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.teal.shade800,
+                color: appColors.infoSubtext,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -106,16 +106,16 @@ class ContextWindowSection extends StatelessWidget {
                   return ChoiceChip(
                     label: Text(preset.toString()),
                     selected: isSelected,
-                    selectedColor: Colors.teal.withValues(alpha: 0.18),
+                    selectedColor: appColors.chipSelectedBackground,
                     labelStyle: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: isSelected
-                          ? Colors.teal.shade900
+                          ? appColors.chipSelectedText
                           : theme.colorScheme.onSurface,
                     ),
                     side: BorderSide(
                       color: isSelected
-                          ? Colors.teal
+                          ? appColors.chipSelectedBorder
                           : theme.colorScheme.outlineVariant,
                     ),
                     onSelected: (_) => onManualPresetSelected(preset),
@@ -128,16 +128,16 @@ class ContextWindowSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.teal.shade50,
+                  color: appColors.infoSurface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.teal.shade200),
+                  border: Border.all(color: appColors.infoBorder),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.shield_outlined,
                       size: 18,
-                      color: Colors.teal.shade800,
+                      color: appColors.infoIcon,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -145,7 +145,7 @@ class ContextWindowSection extends StatelessWidget {
                         'Escalonamento em degraus limitado pela memória informada (${_formatGb(serverMemoryLimitGb!)} GB).',
                         style: TextStyle(
                           fontSize: 11.5,
-                          color: Colors.teal.shade900,
+                          color: appColors.infoText,
                         ),
                       ),
                     ),

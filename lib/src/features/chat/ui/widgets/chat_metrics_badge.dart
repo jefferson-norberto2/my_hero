@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
 
@@ -14,18 +15,19 @@ class ChatMetricsBadge extends StatelessWidget {
     required this.onTap,
   });
 
-  Color _contextStatusColor(double usagePercent) {
-    if (usagePercent > 80) return Colors.red.shade400;
-    if (usagePercent > 50) return Colors.amber.shade700;
-    return Colors.teal;
+  Color _contextStatusColor(AppThemeColors appColors, double usagePercent) {
+    if (usagePercent > 80) return appColors.contextHigh;
+    if (usagePercent > 50) return appColors.contextMedium;
+    return appColors.contextLow;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
     final usagePercent = metrics.contextUsagePercent;
     final remainingPercent = metrics.remainingPercent;
-    final badgeColor = _contextStatusColor(usagePercent);
+    final badgeColor = _contextStatusColor(appColors, usagePercent);
     final computeMode = metrics.computeMode;
 
     return Padding(
@@ -36,8 +38,7 @@ class ChatMetricsBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.8),
+            color: appColors.badgeSurface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
           ),
@@ -52,7 +53,7 @@ class ChatMetricsBadge extends StatelessWidget {
                     Icon(
                       Icons.memory_rounded,
                       size: 14,
-                      color: Colors.teal.shade700,
+                      color: appColors.infoIcon,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -73,7 +74,7 @@ class ChatMetricsBadge extends StatelessWidget {
               Container(
                 width: 1,
                 height: 12,
-                color: Colors.grey.withValues(alpha: 0.4),
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
               ),
               const SizedBox(width: 8),
               Tooltip(
@@ -113,7 +114,8 @@ class _ComputeModeTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _TagPalette palette = _paletteForMode(mode);
+    final appColors = AppThemeColors.of(context);
+    final _TagPalette palette = _paletteForMode(appColors, mode);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -135,31 +137,31 @@ class _ComputeModeTag extends StatelessWidget {
     );
   }
 
-  _TagPalette _paletteForMode(ComputeMode mode) {
+  _TagPalette _paletteForMode(AppThemeColors appColors, ComputeMode mode) {
     switch (mode) {
       case ComputeMode.gpu:
-        return const _TagPalette(
-          background: Color(0xFFD8F3DC),
-          foreground: Color(0xFF1B4332),
-          border: Color(0xFF95D5B2),
+        return _TagPalette(
+          background: appColors.gpuTagBackground,
+          foreground: appColors.gpuTagForeground,
+          border: appColors.gpuTagBorder,
         );
       case ComputeMode.cpu:
-        return const _TagPalette(
-          background: Color(0xFFE2E8F0),
-          foreground: Color(0xFF334155),
-          border: Color(0xFFCBD5E1),
+        return _TagPalette(
+          background: appColors.cpuTagBackground,
+          foreground: appColors.cpuTagForeground,
+          border: appColors.cpuTagBorder,
         );
       case ComputeMode.hybrid:
-        return const _TagPalette(
-          background: Color(0xFFFEF3C7),
-          foreground: Color(0xFF78350F),
-          border: Color(0xFFFCD34D),
+        return _TagPalette(
+          background: appColors.hybridTagBackground,
+          foreground: appColors.hybridTagForeground,
+          border: appColors.hybridTagBorder,
         );
       case ComputeMode.none:
-        return const _TagPalette(
-          background: Color(0xFFE5E7EB),
-          foreground: Color(0xFF374151),
-          border: Color(0xFFD1D5DB),
+        return _TagPalette(
+          background: appColors.neutralTagBackground,
+          foreground: appColors.neutralTagForeground,
+          border: appColors.neutralTagBorder,
         );
     }
   }

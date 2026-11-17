@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_hero/src/core/routes/app_routes.dart';
+import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_metrics.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_drawer.dart';
@@ -87,19 +88,21 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  Widget _buildMemoryDetailsCard(ChatMetrics metrics) {
+  Widget _buildMemoryDetailsCard(BuildContext context, ChatMetrics metrics) {
+    final appColors = AppThemeColors.of(context);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.teal.shade50,
+        color: appColors.infoSurface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.teal.shade200),
+        border: Border.all(color: appColors.infoBorder),
       ),
       child: Row(
         children: [
           Icon(
             Icons.memory_rounded,
-            color: Colors.teal.shade700,
+            color: appColors.infoIcon,
             size: 28,
           ),
           const SizedBox(width: 12),
@@ -118,14 +121,14 @@ class _ChatPageState extends State<ChatPage> {
                   'Alocado no Ollama: ${metrics.memoryFormatted}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.teal.shade900,
+                    color: appColors.infoText,
                   ),
                 ),
                 Text(
                   metrics.hardwareTooltip,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.teal.shade800,
+                    color: appColors.infoSubtext,
                   ),
                 ),
               ],
@@ -139,31 +142,32 @@ class _ChatPageState extends State<ChatPage> {
   void _showMetricsDetailsDialog(BuildContext context) {
     final metrics = _controller.currentMetrics.value;
     final theme = Theme.of(context);
+    final appColors = AppThemeColors.of(context);
 
     showDialog(
       context: context,
       builder: (ctx) {
         final usagePercent = metrics.contextUsagePercent;
-        Color progressColor = Colors.teal;
+        Color progressColor = appColors.contextLow;
         if (usagePercent > 80) {
-          progressColor = Colors.red;
+          progressColor = appColors.contextHigh;
         } else if (usagePercent > 50) {
-          progressColor = Colors.amber.shade800;
+          progressColor = appColors.contextMedium;
         }
 
         return AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.analytics_outlined, color: Colors.teal),
-              SizedBox(width: 8),
-              Text('Métricas do Modelo'),
+              Icon(Icons.analytics_outlined, color: appColors.accent),
+              const SizedBox(width: 8),
+              const Text('Métricas do Modelo'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildMemoryDetailsCard(metrics),
+              _buildMemoryDetailsCard(ctx, metrics),
               const SizedBox(height: 14),
               // Context Card
               Container(
@@ -412,7 +416,6 @@ class _ChatPageState extends State<ChatPage> {
           );
         },
       ),
-      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       actions: [
         _buildMetricsBadge(context, isCompact: isCompact),
         _buildExportMenuButton(context),

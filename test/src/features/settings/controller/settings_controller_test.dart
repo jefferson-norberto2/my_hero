@@ -196,6 +196,64 @@ void main() {
           .called(1);
     });
 
+    test('selectModel preserves valid manual context length when switching to larger model', () async {
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 131072);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await controller.init(
+        SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [
+            modelA.copyWith(maxContextLength: 65536),
+            modelB,
+          ],
+          contextMode: ContextMode.manual,
+          manualContextLength: 36864,
+        ),
+      );
+
+      await controller.selectModel('llama3.2:3b');
+
+      expect(controller.activeModelMaxContext, 131072);
+      expect(controller.manualContextLength.value, 36864);
+      verify(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .called(1);
+    });
+
+    test('selectModel clamps manual context length to 4096 when switching to model with 4096 limit', () async {
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 4096);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await controller.init(
+        SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [
+            modelA.copyWith(maxContextLength: 32768),
+            modelB,
+          ],
+          contextMode: ContextMode.manual,
+          manualContextLength: 20480,
+        ),
+      );
+
+      await controller.selectModel('llama3.2:3b');
+
+      expect(controller.activeModelMaxContext, 4096);
+      expect(controller.manualContextLength.value, 4096);
+    });
+
     test('saveSettings persists context mode, manual preset, and optional server memory limit', () async {
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
@@ -212,17 +270,17 @@ void main() {
       );
 
       controller.selectContextMode(ContextMode.manual);
-      controller.selectManualContextLength(16384);
+      controller.selectManualContextLength(20480);
 
       final result = await controller.saveSettings(
         pendingMemoryLimitInput: '32',
       );
 
       expect(result.contextMode, ContextMode.manual);
-      expect(result.manualContextLength, 16384);
+      expect(result.manualContextLength, 20480);
       expect(result.serverMemoryLimitGb, 32.0);
       verify(() => mockRepository.saveContextMode(ContextMode.manual)).called(1);
-      verify(() => mockRepository.saveManualContextLength(16384)).called(1);
+      verify(() => mockRepository.saveManualContextLength(20480)).called(1);
       verify(() => mockRepository.saveServerMemoryLimitGb(32.0)).called(1);
     });
 

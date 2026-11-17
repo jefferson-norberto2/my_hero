@@ -152,11 +152,13 @@ class OllamaContextCalculator {
         : ContextSettings.fallbackMaxContext;
 
     if (mode == ContextMode.manual) {
-      final allowedManual =
-          ContextSettings.availablePresetsForModel(safeModelMax);
-      final target = math.min(manualContextLength, safeModelMax);
-      final matching = allowedManual.where((p) => p <= target).lastOrNull;
-      return matching ?? allowedManual.first;
+      if (safeModelMax <= ContextSettings.fallbackMaxContext) {
+        return ContextSettings.fallbackMaxContext;
+      }
+      return math.max(
+        ContextSettings.fallbackMaxContext,
+        math.min(manualContextLength, safeModelMax),
+      );
     }
 
     final hardwareCeiling = calculateHardwareContextCeiling(

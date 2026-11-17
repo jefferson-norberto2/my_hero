@@ -154,12 +154,11 @@ class SettingsController {
   }
 
   void _clampManualContextLength() {
-    final allowed =
-        ContextSettings.availablePresetsForModel(activeModelMaxContext);
+    final allowed = buildContextPresets(activeModelMaxContext);
     if (allowed.contains(manualContextLength.value)) return;
     final highestAllowed =
         allowed.where((p) => p <= manualContextLength.value).lastOrNull;
-    manualContextLength.value = highestAllowed ?? allowed.last;
+    manualContextLength.value = highestAllowed ?? allowed.first;
   }
 
   Future<void> _fetchActiveModelMaxContext(String modelName) async {

@@ -32,8 +32,7 @@ class ContextWindowSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = AppThemeColors.of(context);
-    final allowedPresets =
-        ContextSettings.availablePresetsForModel(maxModelContext);
+    final allowedPresets = buildContextPresets(maxModelContext);
 
     return Card(
       elevation: 0,
@@ -103,22 +102,48 @@ class ContextWindowSection extends StatelessWidget {
                 runSpacing: 8,
                 children: allowedPresets.map((preset) {
                   final isSelected = preset == manualContextLength;
-                  return ChoiceChip(
-                    label: Text(preset.toString()),
-                    selected: isSelected,
-                    selectedColor: appColors.chipSelectedBackground,
-                    labelStyle: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? appColors.chipSelectedText
-                          : theme.colorScheme.onSurface,
+                  final isDefault =
+                      preset == ContextSettings.fallbackMaxContext;
+                  return Tooltip(
+                    message: isDefault
+                        ? 'Padrão do Ollama (4.096 tokens)'
+                        : '${ContextSettings.formatTokenCount(preset)} tokens',
+                    child: ChoiceChip(
+                      label: isDefault
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(preset.toString()),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '(Padrão)',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: isSelected
+                                        ? appColors.chipSelectedText
+                                            .withValues(alpha: 0.85)
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(preset.toString()),
+                      selected: isSelected,
+                      selectedColor: appColors.chipSelectedBackground,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? appColors.chipSelectedText
+                            : theme.colorScheme.onSurface,
+                      ),
+                      side: BorderSide(
+                        color: isSelected
+                            ? appColors.chipSelectedBorder
+                            : theme.colorScheme.outlineVariant,
+                      ),
+                      onSelected: (_) => onManualPresetSelected(preset),
                     ),
-                    side: BorderSide(
-                      color: isSelected
-                          ? appColors.chipSelectedBorder
-                          : theme.colorScheme.outlineVariant,
-                    ),
-                    onSelected: (_) => onManualPresetSelected(preset),
                   );
                 }).toList(),
               ),

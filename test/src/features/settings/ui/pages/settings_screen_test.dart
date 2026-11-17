@@ -348,8 +348,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('4096'), findsOneWidget);
-      expect(find.text('8192'), findsOneWidget);
+      expect(find.text('(Padrão)'), findsOneWidget);
+      expect(find.byTooltip('Padrão do Ollama (4.096 tokens)'), findsOneWidget);
+      expect(find.text('7168'), findsOneWidget);
+      expect(find.text('10240'), findsOneWidget);
+      expect(find.text('13312'), findsOneWidget);
       expect(find.text('16384'), findsOneWidget);
+      expect(find.text('8192'), findsNothing);
       expect(find.text('32768'), findsNothing);
       expect(find.text('65536'), findsNothing);
       expect(find.text('131072'), findsNothing);
@@ -370,6 +375,97 @@ void main() {
       expect(capturedResult!.contextMode, ContextMode.manual);
       expect(capturedResult!.manualContextLength, 16384);
       expect(capturedResult!.serverMemoryLimitGb, 32.0);
+    });
+
+    testWidgets('changing model recalculates proportional presets and clamps selected num_ctx', (tester) async {
+      SettingsResult? capturedResult;
+      const modelWith64k = OllamaModel(
+        name: 'qwen2.5:14b',
+        model: 'qwen2.5:14b',
+        size: 9000000000,
+        isLoaded: false,
+        maxContextLength: 65536,
+      );
+
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 8192);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+      when(() => mockRepository.saveServerMemoryLimitGb(any()))
+          .thenAnswer((_) async {});
+
+      await tester.pumpWidget(
+        buildRoutedTestApp(
+          args: const SettingsArgs(
+            selectedModelName: 'qwen2.5:14b',
+            responseStyle: ResponseStyle.simple,
+            ollamaBaseUrl: 'http://localhost:11434',
+            availableModels: [modelWith64k, modelLoaded],
+            isModelLoaded: false,
+            contextMode: ContextMode.manual,
+            manualContextLength: 36864,
+          ),
+          onPopped: (res) => capturedResult = res,
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('36864'));
+      expect(find.text('4096'), findsOneWidget);
+      expect(find.text('(Padrão)'), findsOneWidget);
+      expect(find.text('20480'), findsOneWidget);
+      expect(find.text('36864'), findsOneWidget);
+      expect(find.text('49152'), findsOneWidget);
+      expect(find.text('65536'), findsOneWidget);
+
+      final initialChip = tester.widget<ChoiceChip>(
+        find.ancestor(
+          of: find.text('36864'),
+          matching: find.byType(ChoiceChip),
+        ),
+      );
+      expect(initialChip.selected, isTrue);
+
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('llama3.2:3b').last);
+      await tester.pumpAndSettle();
+
+      verify(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .called(1);
+
+      await tester.ensureVisible(find.text('8192'));
+      expect(find.text('4096'), findsOneWidget);
+      expect(find.text('5120'), findsOneWidget);
+      expect(find.text('6144'), findsOneWidget);
+      expect(find.text('7168'), findsOneWidget);
+      expect(find.text('8192'), findsOneWidget);
+      expect(find.text('20480'), findsNothing);
+      expect(find.text('36864'), findsNothing);
+      expect(find.text('49152'), findsNothing);
+      expect(find.text('65536'), findsNothing);
+
+      final clampedChip = tester.widget<ChoiceChip>(
+        find.ancestor(
+          of: find.text('8192'),
+          matching: find.byType(ChoiceChip),
+        ),
+      );
+      expect(clampedChip.selected, isTrue);
+
+      await tester.ensureVisible(find.text('Salvar'));
+      await tester.tap(find.text('Salvar'));
+      await tester.pumpAndSettle();
+
+      expect(capturedResult, isNotNull);
+      expect(capturedResult!.selectedModelName, 'llama3.2:3b');
+      expect(capturedResult!.contextMode, ContextMode.manual);
+      expect(capturedResult!.manualContextLength, 8192);
     });
 
     testWidgets('displays model pull controls, live progress, and cancel button', (tester) async {

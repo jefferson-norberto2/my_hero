@@ -32,6 +32,38 @@ enum ContextMode {
   }
 }
 
+/// Generates up to 5 sorted, unique `num_ctx` options for a model supporting
+/// [maxContextLength] tokens (`4096` default plus up to 4 proportional steps).
+///
+/// - When [maxContextLength] `<= 4096`, returns `[4096]`.
+/// - When [maxContextLength] `> 4096`, divides `(maxContextLength - 4096)` into
+///   4 equal intervals, rounding the 3 intermediate points to the nearest
+///   `4096` (when `maxContextLength > 16384`) or `1024` (when
+///   `maxContextLength <= 16384`), removing duplicates with a [Set].
+List<int> buildContextPresets(int maxContextLength) {
+  const defaultCtx = ContextSettings.fallbackMaxContext;
+  if (maxContextLength <= defaultCtx) {
+    return const [defaultCtx];
+  }
+
+  final roundingUnit = maxContextLength > 16384 ? 4096 : 1024;
+  final step = (maxContextLength - defaultCtx) / 4;
+  final presets = <int>{defaultCtx};
+
+  for (var i = 1; i <= 3; i++) {
+    final rawPoint = defaultCtx + (step * i);
+    final rounded = (rawPoint / roundingUnit).round() * roundingUnit;
+    if (rounded > defaultCtx && rounded < maxContextLength) {
+      presets.add(rounded);
+    }
+  }
+
+  presets.add(maxContextLength);
+
+  final sorted = presets.toList()..sort();
+  return List<int>.unmodifiable(sorted);
+}
+
 /// Shared constants and formatting helpers for context window configuration.
 class ContextSettings {
   const ContextSettings._();

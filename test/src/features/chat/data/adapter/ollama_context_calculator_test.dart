@@ -197,6 +197,39 @@ void main() {
         ),
         8192,
       );
+
+      expect(
+        OllamaContextCalculator.resolveNumCtx(
+          mode: ContextMode.manual,
+          manualContextLength: 24576,
+          modelMaxContext: 32768,
+          currentStepNumCtx: 4096,
+          estimatedTokens: 100,
+        ),
+        24576,
+      );
+
+      expect(
+        OllamaContextCalculator.resolveNumCtx(
+          mode: ContextMode.manual,
+          manualContextLength: 262144,
+          modelMaxContext: 262144,
+          currentStepNumCtx: 4096,
+          estimatedTokens: 100,
+        ),
+        262144,
+      );
+
+      expect(
+        OllamaContextCalculator.resolveNumCtx(
+          mode: ContextMode.manual,
+          manualContextLength: 2048,
+          modelMaxContext: 16384,
+          currentStepNumCtx: 4096,
+          estimatedTokens: 100,
+        ),
+        4096,
+      );
     });
 
     test('estimates accumulated conversation tokens cleanly with history or metrics', () {

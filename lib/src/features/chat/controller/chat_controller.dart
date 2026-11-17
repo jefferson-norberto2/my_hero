@@ -15,7 +15,6 @@ import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/memory_allocation.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
@@ -48,7 +47,6 @@ class ChatController {
   final isGenerating = signal<bool>(false);
   final loadingProgress = signal<double>(0.0);
   final loadingStatus = signal<String>('');
-  final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final contextMode = signal<ContextMode>(ContextMode.automatic);
   final manualContextLength =
       signal<int>(ContextSettings.fallbackMaxContext);
@@ -86,7 +84,6 @@ class ChatController {
   SettingsArgs buildSettingsArgs() {
     return SettingsArgs(
       selectedModelName: selectedModelName.value,
-      responseStyle: responseStyle.value,
       ollamaBaseUrl: ollamaBaseUrl.value,
       availableModels: List<OllamaModel>.from(availableModels.value),
       isOllamaConnected: isOllamaConnected.value,
@@ -298,7 +295,6 @@ class ChatController {
       title: 'Nova Conversa',
       messages: [],
       modelName: modelToUse,
-      responseStyle: responseStyle.value,
       activeNumCtx: initialNumCtx,
       createdAt: now,
       updatedAt: now,
@@ -334,7 +330,6 @@ class ChatController {
     if (conv.modelName.isNotEmpty) {
       selectedModelName.value = conv.modelName;
     }
-    responseStyle.value = conv.responseStyle;
 
     final activeModel = availableModels.value
         .where((m) => m.name == selectedModelName.value)
@@ -434,24 +429,19 @@ class ChatController {
     availableModels.value = result.availableModels;
 
     final previousModel = selectedModelName.value;
-    final previousStyle = responseStyle.value;
     final wasLoaded = isModelLoaded.value;
 
     final targetModel = result.selectedModelName;
-    final targetStyle = result.responseStyle;
 
     final modelChanged = targetModel != previousModel;
-    final styleChanged = targetStyle != previousStyle;
 
     selectedModelName.value = targetModel;
-    responseStyle.value = targetStyle;
     contextMode.value = result.contextMode;
     manualContextLength.value = result.manualContextLength;
 
     final conv = currentConversation;
     if (conv != null) {
       conv.modelName = targetModel;
-      conv.responseStyle = targetStyle;
     }
 
     final initialModelInfo =
@@ -493,45 +483,7 @@ class ChatController {
       _updateMetricsFromModel(modelInfo);
     }
 
-    if (styleChanged) {
-      _appendSystemMessage(
-        'Sistema: Estilo de resposta alterado para "${targetStyle.label}".',
-      );
-    }
-
     await _saveCurrentState();
-  }
-
-  /// Updates the active conversation model and response style.
-  Future<void> updateConversationSettings({
-    required String modelName,
-    required ResponseStyle newResponseStyle,
-  }) async {
-    if (isLoading.value || isGenerating.value) return;
-
-    final modelChanged = modelName != selectedModelName.value;
-    final styleChanged = newResponseStyle != responseStyle.value;
-
-    if (!modelChanged && !styleChanged) return;
-
-    responseStyle.value = newResponseStyle;
-    selectedModelName.value = modelName;
-
-    final conv = currentConversation;
-    if (conv != null) {
-      conv.modelName = modelName;
-      conv.responseStyle = newResponseStyle;
-      await _saveCurrentState();
-    }
-
-    if (modelChanged) {
-      await loadModel(modelName);
-    } else if (styleChanged) {
-      _appendSystemMessage(
-        'Sistema: Estilo de resposta alterado para "${newResponseStyle.label}".',
-      );
-      await _saveCurrentState();
-    }
   }
 
   void _appendSystemMessage(String text) {
@@ -661,7 +613,6 @@ class ChatController {
     ];
     _syncMessagesToCurrentConversation();
 
-    final promptToSend = responseStyle.value.applyToPrompt(effectiveText);
     final historyToSend =
         chatHistory.value.sublist(0, chatHistory.value.length - 2);
 
@@ -680,7 +631,7 @@ class ChatController {
 
     final estimatedTokens = OllamaContextCalculator.estimateConversationTokens(
       history: historyToSend,
-      newUserText: promptToSend,
+      newUserText: effectiveText,
       newAttachment: attachment,
       lastPromptTokens: conv?.lastPromptTokens ?? 0,
       lastEvalTokens: conv?.lastEvalTokens ?? 0,
@@ -712,13 +663,12 @@ class ChatController {
 
     try {
       final stream = _repository.sendMessage(
-        text: promptToSend,
+        text: effectiveText,
         attachment: attachment,
         imageBytes:
             attachment?.type == AttachmentType.image ? attachment?.bytes : null,
         modelName: currentModel,
         history: historyToSend,
-        responseStyle: responseStyle.value,
         numCtx: activeNumCtx,
         onMetrics: (pTokens, eTokens) {
           currentMetrics.value = currentMetrics.value.copyWith(

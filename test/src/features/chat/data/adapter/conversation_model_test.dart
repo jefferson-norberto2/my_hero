@@ -1,11 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 void main() {
   group('Conversation Model', () {
-    test('should instantiate correctly and convert to/from JSON with responseStyle and modelName', () {
+    test('should instantiate correctly and convert to/from JSON with modelName', () {
       final now = DateTime.now();
       final conv = Conversation(
         id: '123',
@@ -14,7 +13,6 @@ void main() {
           ChatMessage(text: 'Olá', isUser: true),
         ],
         modelName: 'deepseek-r1:8b',
-        responseStyle: ResponseStyle.detailed,
         createdAt: now,
         updatedAt: now,
       );
@@ -25,12 +23,12 @@ void main() {
       expect(fromJson.id, '123');
       expect(fromJson.title, 'Conversa Teste');
       expect(fromJson.modelName, 'deepseek-r1:8b');
-      expect(fromJson.responseStyle, ResponseStyle.detailed);
+      expect(json.containsKey('responseStyle'), isFalse);
       expect(fromJson.messages.length, 1);
       expect(fromJson.messages.first.text, 'Olá');
     });
 
-    test('copyWith should update specified attributes including responseStyle and modelName', () {
+    test('copyWith should update specified attributes including modelName', () {
       final now = DateTime.now();
       final conv = Conversation(
         id: '1',
@@ -44,16 +42,14 @@ void main() {
       final updated = conv.copyWith(
         title: 'Novo Título',
         modelName: 'mistral:latest',
-        responseStyle: ResponseStyle.brief,
       );
 
       expect(updated.id, '1');
       expect(updated.title, 'Novo Título');
       expect(updated.modelName, 'mistral:latest');
-      expect(updated.responseStyle, ResponseStyle.brief);
     });
 
-    test('backward compatibility: parses legacy JSON without modelName', () {
+    test('backward compatibility: parses legacy JSON with legacy responseStyle key and without modelName', () {
       final legacyJson = {
         'id': 'legacy-1',
         'title': 'Antiga',

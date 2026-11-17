@@ -7,7 +7,6 @@ import 'package:my_hero/src/features/settings/data/repository/settings_repositor
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 class MockSettingsRepository extends Mock implements SettingsRepository {}
 
@@ -63,7 +62,6 @@ void main() {
       await controller.init(
         const SettingsArgs(
           selectedModelName: 'mimo-v2.6:9b',
-          responseStyle: ResponseStyle.detailed,
           ollamaBaseUrl: 'http://192.168.1.244:11434',
           availableModels: [modelA, modelB],
           isOllamaConnected: true,
@@ -73,7 +71,6 @@ void main() {
 
       expect(controller.ollamaBaseUrl.value, 'http://192.168.1.244:11434');
       expect(controller.selectedModelName.value, 'mimo-v2.6:9b');
-      expect(controller.responseStyle.value, ResponseStyle.detailed);
       expect(controller.availableModels.value.length, 2);
       expect(controller.isModelLoaded.value, isFalse);
       verifyNever(() => mockRepository.getAvailableModels());
@@ -144,7 +141,6 @@ void main() {
       await controller.init(
         const SettingsArgs(
           selectedModelName: 'mimo-v2.6:9b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [modelA, modelB],
         ),
@@ -152,7 +148,6 @@ void main() {
 
       controller.toggleServerEditor();
       controller.selectModel('llama3.2:3b');
-      controller.selectResponseStyle(ResponseStyle.brief);
 
       final result = await controller.saveSettings(
         pendingHostInput: '192.168.1.244',
@@ -160,7 +155,6 @@ void main() {
 
       expect(result.ollamaBaseUrl, 'http://192.168.1.244:11434');
       expect(result.selectedModelName, 'llama3.2:3b');
-      expect(result.responseStyle, ResponseStyle.brief);
       expect(result.isModelLoaded, isTrue);
       verify(() => mockRepository.saveOllamaBaseUrl('http://192.168.1.244:11434'))
           .called(1);

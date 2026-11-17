@@ -1,5 +1,4 @@
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 /// Represents a persisted chat conversation and its associated configuration.
 class Conversation {
@@ -7,7 +6,6 @@ class Conversation {
   String title;
   List<ChatMessage> messages;
   String modelName;
-  ResponseStyle responseStyle;
   int lastPromptTokens;
   int lastEvalTokens;
   int activeNumCtx;
@@ -19,7 +17,6 @@ class Conversation {
     required this.title,
     required this.messages,
     this.modelName = '',
-    this.responseStyle = ResponseStyle.simple,
     this.lastPromptTokens = 0,
     this.lastEvalTokens = 0,
     this.activeNumCtx = 4096,
@@ -37,7 +34,6 @@ class Conversation {
     String? title,
     List<ChatMessage>? messages,
     String? modelName,
-    ResponseStyle? responseStyle,
     int? lastPromptTokens,
     int? lastEvalTokens,
     int? activeNumCtx,
@@ -49,7 +45,6 @@ class Conversation {
       title: title ?? this.title,
       messages: messages ?? List.from(this.messages),
       modelName: modelName ?? this.modelName,
-      responseStyle: responseStyle ?? this.responseStyle,
       lastPromptTokens: lastPromptTokens ?? this.lastPromptTokens,
       lastEvalTokens: lastEvalTokens ?? this.lastEvalTokens,
       activeNumCtx: activeNumCtx ?? this.activeNumCtx,
@@ -65,7 +60,6 @@ class Conversation {
       'messages': messages.map((m) => m.toJson()).toList(),
       'modelName': modelName,
       'is2B': is2B,
-      'responseStyle': responseStyle.name,
       'lastPromptTokens': lastPromptTokens,
       'lastEvalTokens': lastEvalTokens,
       'activeNumCtx': activeNumCtx,
@@ -89,8 +83,6 @@ class Conversation {
               .toList() ??
           [],
       modelName: fallbackModel,
-      responseStyle:
-          ResponseStyle.fromString(json['responseStyle'] as String?),
       lastPromptTokens: (json['lastPromptTokens'] as num?)?.toInt() ?? 0,
       lastEvalTokens: (json['lastEvalTokens'] as num?)?.toInt() ?? 0,
       activeNumCtx: (json['activeNumCtx'] as num?)?.toInt() ?? 4096,

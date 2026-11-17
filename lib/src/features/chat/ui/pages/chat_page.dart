@@ -388,7 +388,7 @@ class _ChatPageState extends State<ChatPage> {
           if (!isConnected) {
             subtitle = 'Ollama desconectado ($host)';
           } else if (isLoaded && modelName.isNotEmpty) {
-            subtitle = '$modelName • ${_controller.responseStyle.value.label}';
+            subtitle = modelName;
           } else if (modelName.isNotEmpty) {
             subtitle = '$modelName (não carregado na memória)';
           } else {

@@ -7,7 +7,6 @@ import 'package:my_hero/src/features/settings/data/repository/settings_repositor
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
 /// Manages reactive draft state and actions for the settings screen.
@@ -21,7 +20,6 @@ class SettingsController {
   final ollamaBaseUrl = signal<String>(AppConstants.ollamaBaseUrl);
   final availableModels = signal<List<OllamaModel>>([]);
   final selectedModelName = signal<String>('');
-  final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final contextMode = signal<ContextMode>(ContextMode.automatic);
   final manualContextLength =
       signal<int>(ContextSettings.fallbackMaxContext);
@@ -71,7 +69,6 @@ class SettingsController {
       if (selectedModelName.value.isEmpty && availableModels.value.isNotEmpty) {
         selectedModelName.value = availableModels.value.first.name;
       }
-      responseStyle.value = args.responseStyle;
       contextMode.value = args.contextMode;
       manualContextLength.value = args.manualContextLength;
       isOllamaConnected.value = args.isOllamaConnected;
@@ -119,10 +116,6 @@ class SettingsController {
     } else {
       _clampManualContextLength();
     }
-  }
-
-  void selectResponseStyle(ResponseStyle style) {
-    responseStyle.value = style;
   }
 
   void selectContextMode(ContextMode mode) {
@@ -412,7 +405,6 @@ class SettingsController {
 
     return SettingsResult(
       selectedModelName: selectedModelName.value,
-      responseStyle: responseStyle.value,
       ollamaBaseUrl: ollamaBaseUrl.value,
       availableModels: List<OllamaModel>.from(availableModels.value),
       isOllamaConnected: isOllamaConnected.value,

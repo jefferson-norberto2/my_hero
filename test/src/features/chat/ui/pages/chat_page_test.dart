@@ -16,9 +16,9 @@ import 'package:my_hero/src/features/settings/controller/settings_controller.dar
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
+import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockChatRepository extends Mock implements ChatRepository {}
@@ -55,7 +55,7 @@ void main() {
   );
 
   setUpAll(() {
-    registerFallbackValue(ResponseStyle.simple);
+    registerFallbackValue(ContextMode.automatic);
   });
 
   setUp(() {
@@ -145,7 +145,7 @@ void main() {
       expect(find.byIcon(Icons.refresh), findsNothing);
     });
 
-    testWidgets('shows model and style without duplicate VRAM in AppBar subtitle, keeping VRAM and Ctx exclusively in right pill', (tester) async {
+    testWidgets('shows model without response style or duplicate VRAM in AppBar subtitle, keeping VRAM and Ctx exclusively in right pill', (tester) async {
       when(() => mockChatRepo.getAvailableModels())
           .thenAnswer((_) async => [loadedModel]);
 
@@ -153,7 +153,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Nova Conversa'), findsOneWidget);
-      expect(find.text('mimo-v2.6:9b • Simples'), findsOneWidget);
+      expect(find.text('mimo-v2.6:9b'), findsOneWidget);
+      expect(find.textContaining('Simples'), findsNothing);
       expect(find.textContaining('VRAM:'), findsNothing);
 
       expect(find.text('3.8 GB'), findsOneWidget);
@@ -222,6 +223,10 @@ void main() {
     testWidgets('navigates to SettingsScreen via GoRouter and updates ChatPage on Salvar', (tester) async {
       when(() => mockChatRepo.getAvailableModels())
           .thenAnswer((_) async => [loadedModel]);
+      when(() => mockSettingsRepo.saveContextMode(any()))
+          .thenAnswer((_) async {});
+      when(() => mockSettingsRepo.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
 
       await tester.pumpWidget(buildApp());
       await tester.pumpAndSettle();
@@ -231,13 +236,21 @@ void main() {
 
       expect(find.text('Configurações da Conversa'), findsOneWidget);
 
-      await tester.tap(find.text('Breve'));
+      await tester.ensureVisible(find.text('Manual'));
+      await tester.tap(find.text('Manual'));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('8192'));
+      await tester.tap(find.text('8192'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Salvar'));
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
 
-      expect(find.text('mimo-v2.6:9b • Breve'), findsOneWidget);
+      expect(find.text('mimo-v2.6:9b'), findsOneWidget);
+      expect(chatController.contextMode.value, ContextMode.manual);
+      expect(chatController.manualContextLength.value, 8192);
     });
 
     testWidgets('navigates to SettingsScreen and discards changes on Cancelar', (tester) async {
@@ -250,13 +263,16 @@ void main() {
       await tester.tap(find.byIcon(Icons.tune));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Detalhada'));
+      await tester.ensureVisible(find.text('Manual'));
+      await tester.tap(find.text('Manual'));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Cancelar'));
       await tester.tap(find.text('Cancelar'));
       await tester.pumpAndSettle();
 
-      expect(find.text('mimo-v2.6:9b • Simples'), findsOneWidget);
+      expect(find.text('mimo-v2.6:9b'), findsOneWidget);
+      expect(chatController.contextMode.value, ContextMode.automatic);
     });
 
     testWidgets('drawer settings entry navigates to SettingsScreen', (tester) async {

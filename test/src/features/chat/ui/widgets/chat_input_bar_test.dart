@@ -5,7 +5,6 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_attachment.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
@@ -26,10 +25,6 @@ void main() {
   late MockChatRepository mockRepository;
   late MockMediaPickerService mockMediaPicker;
   late ChatController controller;
-
-  setUpAll(() {
-    registerFallbackValue(ResponseStyle.simple);
-  });
 
   setUp(() {
     mockRepository = MockChatRepository();
@@ -78,7 +73,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           onMetrics: any(named: 'onMetrics'),
         ),
       ).thenAnswer(

@@ -121,7 +121,7 @@ class ChatDrawer extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '$modelLabel • ${item.responseStyle.label} • ${item.messages.length} msgs',
+                          '$modelLabel • ${item.messages.length} msgs',
                           style: const TextStyle(fontSize: 11),
                         ),
                         trailing: IconButton(

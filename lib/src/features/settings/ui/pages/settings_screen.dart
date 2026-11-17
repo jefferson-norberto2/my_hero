@@ -10,10 +10,9 @@ import 'package:my_hero/src/features/settings/ui/widgets/appearance_section.dart
 import 'package:my_hero/src/features/settings/ui/widgets/context_window_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_model_section.dart';
 import 'package:my_hero/src/features/settings/ui/widgets/ollama_server_section.dart';
-import 'package:my_hero/src/features/settings/ui/widgets/response_style_section.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
-/// Full-page settings screen centralizing model, response style, context window, server, and appearance controls.
+/// Full-page settings screen centralizing model, context window, server, and appearance controls.
 class SettingsScreen extends StatefulWidget {
   final SettingsArgs? initialArgs;
   final SettingsController? controller;
@@ -164,7 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final loadError = _controller.loadErrorMessage.value;
                         final isModelLoaded = _controller.isModelLoaded.value;
                         final downloadState = _controller.downloadState.value;
-                        final selectedStyle = _controller.responseStyle.value;
                         final selectedContextMode =
                             _controller.contextMode.value;
                         final manualContextLength =
@@ -205,11 +203,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onLoadModel: _controller.loadModelIntoMemory,
                               onDownloadModel: _controller.downloadModel,
                               onCancelDownload: _controller.cancelModelDownload,
-                            ),
-                            const SizedBox(height: 12),
-                            ResponseStyleSection(
-                              selectedStyle: selectedStyle,
-                              onStyleChanged: _controller.selectResponseStyle,
                             ),
                             const SizedBox(height: 12),
                             AppearanceSection(

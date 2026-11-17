@@ -5,7 +5,6 @@ import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 /// Repository contract for chat sessions, messaging, and Ollama model operations.
 abstract class ChatRepository {
@@ -36,7 +35,6 @@ abstract class ChatRepository {
 
   Future<void> startNewChatSession({
     String? modelName,
-    ResponseStyle responseStyle = ResponseStyle.simple,
   });
 
   Stream<ChatStreamChunk> sendMessage({
@@ -45,7 +43,6 @@ abstract class ChatRepository {
     ChatAttachment? attachment,
     required String modelName,
     required List<ChatMessage> history,
-    ResponseStyle responseStyle = ResponseStyle.simple,
     int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   });

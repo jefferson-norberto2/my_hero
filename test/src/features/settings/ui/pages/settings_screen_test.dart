@@ -12,7 +12,6 @@ import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 class MockSettingsRepository extends Mock implements SettingsRepository {}
 
@@ -102,14 +101,13 @@ void main() {
   }
 
   group('SettingsScreen Widget Tests', () {
-    testWidgets('renders model controls, response style selector, server section, and footer actions', (tester) async {
+    testWidgets('renders model controls, server section, context section, appearance section, and footer actions without response style section', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.lightTheme,
           home: SettingsScreen(
             initialArgs: const SettingsArgs(
               selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
               ollamaBaseUrl: 'http://192.168.1.244:11434',
               availableModels: [modelUnloaded, modelLoaded],
               isOllamaConnected: true,
@@ -126,40 +124,21 @@ void main() {
       expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
       expect(find.text('Carregar na Memória'), findsOneWidget);
 
-      expect(find.text('Estilo de Resposta'), findsOneWidget);
-      expect(find.text('Breve'), findsOneWidget);
-      expect(find.text('Simples'), findsOneWidget);
-      expect(find.text('Detalhada'), findsOneWidget);
-      expect(find.text(ResponseStyle.simple.description), findsOneWidget);
+      expect(find.text('Estilo de Resposta'), findsNothing);
+      expect(find.text('Breve'), findsNothing);
+      expect(find.text('Simples'), findsNothing);
+      expect(find.text('Detalhada'), findsNothing);
+      expect(find.text('Curta'), findsNothing);
+      expect(find.text('Padrão'), findsNothing);
+      expect(find.text('Longa'), findsNothing);
 
+      expect(find.text('Janela de Contexto'), findsOneWidget);
+      expect(find.text('Aparência'), findsOneWidget);
       expect(find.text('Servidor: http://192.168.1.244:11434'), findsOneWidget);
       expect(find.text('Alterar IP'), findsOneWidget);
 
       expect(find.text('Cancelar'), findsOneWidget);
       expect(find.text('Salvar'), findsOneWidget);
-    });
-
-    testWidgets('selecting response style updates dynamic description', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.lightTheme,
-          home: SettingsScreen(
-            initialArgs: const SettingsArgs(
-              selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
-              ollamaBaseUrl: 'http://192.168.1.244:11434',
-              availableModels: [modelUnloaded],
-            ),
-            controller: controller,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Detalhada'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(ResponseStyle.detailed.description), findsOneWidget);
     });
 
     testWidgets('tapping Alterar IP expands inline editor, tests connection, and applies IP', (tester) async {
@@ -172,7 +151,6 @@ void main() {
           home: SettingsScreen(
             initialArgs: const SettingsArgs(
               selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
               ollamaBaseUrl: 'http://192.168.1.244:11434',
               availableModels: [modelUnloaded],
             ),
@@ -227,7 +205,6 @@ void main() {
           home: SettingsScreen(
             initialArgs: const SettingsArgs(
               selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
               ollamaBaseUrl: 'http://localhost:11434',
               availableModels: [modelUnloaded],
               isModelLoaded: false,
@@ -248,7 +225,6 @@ void main() {
     testWidgets('Cancelar pops returning null and discards unsaved changes', (tester) async {
       SettingsResult? capturedResult = const SettingsResult(
         selectedModelName: 'sentinel',
-        responseStyle: ResponseStyle.simple,
         ollamaBaseUrl: '',
         availableModels: [],
         isOllamaConnected: false,
@@ -259,7 +235,6 @@ void main() {
         buildRoutedTestApp(
           args: const SettingsArgs(
             selectedModelName: 'mimo-v2.6:9b',
-            responseStyle: ResponseStyle.simple,
             ollamaBaseUrl: 'http://localhost:11434',
             availableModels: [modelUnloaded, modelLoaded],
           ),
@@ -270,9 +245,11 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Breve'));
+      await tester.ensureVisible(find.text('Manual'));
+      await tester.tap(find.text('Manual'));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Cancelar'));
       await tester.tap(find.text('Cancelar'));
       await tester.pumpAndSettle();
 
@@ -282,12 +259,16 @@ void main() {
 
     testWidgets('Salvar pops returning SettingsResult with updated selections', (tester) async {
       SettingsResult? capturedResult;
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 8192);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
 
       await tester.pumpWidget(
         buildRoutedTestApp(
           args: const SettingsArgs(
             selectedModelName: 'mimo-v2.6:9b',
-            responseStyle: ResponseStyle.simple,
             ollamaBaseUrl: 'http://localhost:11434',
             availableModels: [modelUnloaded, modelLoaded],
           ),
@@ -298,15 +279,19 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Breve'));
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('llama3.2:3b').last);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Salvar'));
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
 
       expect(capturedResult, isNotNull);
-      expect(capturedResult!.responseStyle, ResponseStyle.brief);
-      expect(capturedResult!.selectedModelName, 'mimo-v2.6:9b');
+      expect(capturedResult!.selectedModelName, 'llama3.2:3b');
       expect(find.text('Open'), findsOneWidget);
     });
 
@@ -329,7 +314,6 @@ void main() {
         buildRoutedTestApp(
           args: const SettingsArgs(
             selectedModelName: 'qwen2.5:7b',
-            responseStyle: ResponseStyle.simple,
             ollamaBaseUrl: 'http://localhost:11434',
             availableModels: [modelWith16k],
             isModelLoaded: true,
@@ -395,7 +379,6 @@ void main() {
         buildRoutedTestApp(
           args: const SettingsArgs(
             selectedModelName: 'qwen2.5:14b',
-            responseStyle: ResponseStyle.simple,
             ollamaBaseUrl: 'http://localhost:11434',
             availableModels: [modelWith64k, modelLoaded],
             isModelLoaded: false,
@@ -489,7 +472,6 @@ void main() {
           home: SettingsScreen(
             initialArgs: const SettingsArgs(
               selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
               ollamaBaseUrl: 'http://localhost:11434',
               availableModels: [modelUnloaded],
             ),
@@ -545,7 +527,6 @@ void main() {
           home: SettingsScreen(
             initialArgs: const SettingsArgs(
               selectedModelName: 'mimo-v2.6:9b',
-              responseStyle: ResponseStyle.simple,
               ollamaBaseUrl: 'http://localhost:11434',
               availableModels: [modelUnloaded],
             ),

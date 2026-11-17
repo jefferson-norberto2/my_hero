@@ -16,7 +16,6 @@ import 'package:my_hero/src/features/settings/data/repository/settings_repositor
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockChatRepository extends Mock implements ChatRepository {}
@@ -41,7 +40,6 @@ void main() {
   );
 
   setUpAll(() {
-    registerFallbackValue(ResponseStyle.simple);
     registerFallbackValue(ThemeMode.light);
   });
 

@@ -10,7 +10,6 @@ import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.d
 import 'package:my_hero/src/features/chat/data/services/foreground_task_manager.dart';
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 class MockOllamaRemoteDatasource extends Mock implements OllamaRemoteDatasource {}
 class MockChatHistoryDatasource extends Mock implements ChatHistoryDatasource {}
@@ -113,7 +112,6 @@ void main() {
         text: 'Oi',
         modelName: 'llama3.2:3b',
         history: [],
-        responseStyle: ResponseStyle.simple,
       );
 
       final chunks = await stream.toList();
@@ -128,7 +126,9 @@ void main() {
       verify(
         () => mockOllamaDatasource.generateChatResponseAsync(
           modelName: 'llama3.2:3b',
-          messages: any(named: 'messages'),
+          messages: const [
+            {'role': 'user', 'content': 'Oi'},
+          ],
         ),
       ).called(1);
     });

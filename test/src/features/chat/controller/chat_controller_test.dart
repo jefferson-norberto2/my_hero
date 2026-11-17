@@ -13,7 +13,6 @@ import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/compute_mode.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockChatRepository extends Mock implements ChatRepository {}
@@ -24,10 +23,6 @@ void main() {
   late MockChatRepository mockRepository;
   late MockMediaPickerService mockMediaPicker;
   late ChatController controller;
-
-  setUpAll(() {
-    registerFallbackValue(ResponseStyle.simple);
-  });
 
   setUp(() {
     mockRepository = MockChatRepository();
@@ -145,7 +140,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -165,12 +159,11 @@ void main() {
 
       verify(
         () => mockRepository.sendMessage(
-          text: any(named: 'text'),
+          text: 'O que tem aqui?',
           imageBytes: fakeBytes,
           attachment: attachment,
           modelName: 'llama3.2:3b',
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -195,7 +188,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -280,7 +272,6 @@ void main() {
     test('buildSettingsArgs captures current controller state', () {
       controller.ollamaBaseUrl.value = 'http://192.168.1.244:11434';
       controller.selectedModelName.value = 'mimo-v2.6:9b';
-      controller.responseStyle.value = ResponseStyle.detailed;
       controller.isOllamaConnected.value = true;
       controller.isModelLoaded.value = true;
 
@@ -288,12 +279,11 @@ void main() {
 
       expect(args.ollamaBaseUrl, 'http://192.168.1.244:11434');
       expect(args.selectedModelName, 'mimo-v2.6:9b');
-      expect(args.responseStyle, ResponseStyle.detailed);
       expect(args.isOllamaConnected, isTrue);
       expect(args.isModelLoaded, isTrue);
     });
 
-    test('applySettings updates loaded model, style, metrics, and host without duplicate preload', () async {
+    test('applySettings updates loaded model, metrics, and host without duplicate preload', () async {
       await controller.createNewConversation();
       controller.selectedModelName.value = 'llama3.2:3b';
       controller.isModelLoaded.value = false;
@@ -310,7 +300,6 @@ void main() {
       await controller.applySettings(
         const SettingsResult(
           selectedModelName: 'mimo-v2.6:9b',
-          responseStyle: ResponseStyle.brief,
           ollamaBaseUrl: 'http://192.168.1.244:11434',
           availableModels: [loadedModel],
           isOllamaConnected: true,
@@ -320,13 +309,11 @@ void main() {
 
       expect(controller.ollamaBaseUrl.value, 'http://192.168.1.244:11434');
       expect(controller.selectedModelName.value, 'mimo-v2.6:9b');
-      expect(controller.responseStyle.value, ResponseStyle.brief);
       expect(controller.isModelLoaded.value, isTrue);
       expect(controller.currentMetrics.value.vramFormatted, '3.8 GB');
       expect(controller.currentMetrics.value.contextLimit, 4096);
       expect(controller.currentMetrics.value.maxContextLength, 8192);
       expect(controller.currentConversation?.modelName, 'mimo-v2.6:9b');
-      expect(controller.currentConversation?.responseStyle, ResponseStyle.brief);
 
       verifyNever(
         () => mockRepository.loadModel(
@@ -355,7 +342,6 @@ void main() {
       await controller.applySettings(
         const SettingsResult(
           selectedModelName: 'deepseek-r1:8b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [unloadedModel],
           isOllamaConnected: true,
@@ -384,7 +370,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -425,7 +410,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -467,7 +451,6 @@ void main() {
       await controller.applySettings(
         SettingsResult(
           selectedModelName: 'llama3.2:3b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [cpuModel],
           isOllamaConnected: true,
@@ -497,7 +480,6 @@ void main() {
       await controller.applySettings(
         SettingsResult(
           selectedModelName: 'qwen3:8b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [hybridModel],
           isOllamaConnected: true,
@@ -531,7 +513,6 @@ void main() {
       await controller.applySettings(
         const SettingsResult(
           selectedModelName: 'qwen2.5:7b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [model32k],
           isOllamaConnected: true,
@@ -550,7 +531,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -604,7 +584,6 @@ void main() {
       await controller.applySettings(
         SettingsResult(
           selectedModelName: 'llama3.1:8b',
-          responseStyle: ResponseStyle.simple,
           ollamaBaseUrl: 'http://localhost:11434',
           availableModels: [heavyCpuModel],
           isOllamaConnected: true,
@@ -621,7 +600,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -667,7 +645,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),
@@ -710,7 +687,6 @@ void main() {
           attachment: any(named: 'attachment'),
           modelName: any(named: 'modelName'),
           history: any(named: 'history'),
-          responseStyle: any(named: 'responseStyle'),
           numCtx: any(named: 'numCtx'),
           onMetrics: any(named: 'onMetrics'),
         ),

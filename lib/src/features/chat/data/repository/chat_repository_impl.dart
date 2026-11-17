@@ -11,7 +11,6 @@ import 'package:my_hero/src/features/settings/data/datasource/settings_datasourc
 import 'package:my_hero/src/shared/models/chat_stream_chunk.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
-import 'package:my_hero/src/shared/models/response_style.dart';
 
 /// Default [ChatRepository] implementation backed by Ollama and encrypted local storage.
 class ChatRepositoryImpl implements ChatRepository {
@@ -116,7 +115,6 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> startNewChatSession({
     String? modelName,
-    ResponseStyle responseStyle = ResponseStyle.simple,
   }) async {
     // Each Ollama conversation is isolated by the message history sent per request.
   }
@@ -128,7 +126,6 @@ class ChatRepositoryImpl implements ChatRepository {
     ChatAttachment? attachment,
     required String modelName,
     required List<ChatMessage> history,
-    ResponseStyle responseStyle = ResponseStyle.simple,
     int? numCtx,
     void Function(int promptTokens, int evalTokens)? onMetrics,
   }) {

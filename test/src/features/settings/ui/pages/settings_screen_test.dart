@@ -9,6 +9,7 @@ import 'package:my_hero/src/features/settings/controller/settings_controller.dar
 import 'package:my_hero/src/features/settings/data/models/settings_args.dart';
 import 'package:my_hero/src/features/settings/data/repository/settings_repository.dart';
 import 'package:my_hero/src/features/settings/ui/pages/settings_screen.dart';
+import 'package:my_hero/src/features/settings/ui/widgets/context_window_section.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 import 'package:my_hero/src/shared/models/model_download_state.dart';
 import 'package:my_hero/src/shared/models/ollama_model.dart';
@@ -233,10 +234,13 @@ void main() {
 
       await tester.pumpWidget(
         buildRoutedTestApp(
-          args: const SettingsArgs(
+          args: SettingsArgs(
             selectedModelName: 'mimo-v2.6:9b',
             ollamaBaseUrl: 'http://localhost:11434',
-            availableModels: [modelUnloaded, modelLoaded],
+            availableModels: [
+              modelUnloaded.copyWith(maxContextLength: 16384),
+              modelLoaded,
+            ],
           ),
           onPopped: (res) => capturedResult = res,
         ),
@@ -245,8 +249,11 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Manual'));
-      await tester.tap(find.text('Manual'));
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+      await tester.drag(
+        find.byKey(const Key('context_window_slider')),
+        const Offset(300, 0),
+      );
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.text('Cancelar'));
@@ -295,7 +302,7 @@ void main() {
       expect(find.text('Open'), findsOneWidget);
     });
 
-    testWidgets('context section caps manual presets to model max without memory limit controls', (tester) async {
+    testWidgets('context section renders discrete power-of-two slider, header badge, and no legacy mode selector', (tester) async {
       SettingsResult? capturedResult;
       const modelWith16k = OllamaModel(
         name: 'qwen2.5:7b',
@@ -326,29 +333,75 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('server_memory_limit_field')), findsNothing);
-      expect(find.text('16 GB'), findsNothing);
-      expect(find.text('32 GB'), findsNothing);
-      expect(find.text('64 GB'), findsNothing);
+      expect(find.text('Automático (Dinâmico)'), findsNothing);
+      expect(find.text('Manual'), findsNothing);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(find.byType(SegmentedButton<ContextMode>), findsNothing);
 
-      await tester.ensureVisible(find.text('Manual'));
-      await tester.tap(find.text('Manual'));
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+
+      expect(find.text('4k (Padrão) • 4.096 tokens'), findsOneWidget);
+      expect(find.text('4k'), findsOneWidget);
+      expect(find.text('8k'), findsNothing);
+      expect(find.text('16k'), findsOneWidget);
+      expect(find.text('32k'), findsNothing);
+      expect(
+        find.text('Máximo nativo do modelo ativo: 16.384 tokens'),
+        findsOneWidget,
+      );
+
+      final sliderTheme = tester.widget<SliderTheme>(
+        find.ancestor(
+          of: find.byKey(const Key('context_window_slider')),
+          matching: find.byType(SliderTheme),
+        ).first,
+      );
+      expect(
+        sliderTheme.data.overlayShape,
+        const RoundSliderOverlayShape(overlayRadius: 16),
+      );
+      expect(
+        sliderTheme.data.padding,
+        const EdgeInsets.symmetric(horizontal: 16),
+      );
+
+      final initialSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(initialSlider.min, 0.0);
+      expect(initialSlider.max, 2.0);
+      expect(initialSlider.divisions, 2);
+      expect(initialSlider.value, 0.0);
+      expect(initialSlider.activeColor, AppTheme.lightTheme.colorScheme.primary);
+      expect(initialSlider.thumbColor, AppTheme.lightTheme.colorScheme.primary);
+
+      // Tapping the max endpoint jumps to the model limit directly.
+      await tester.tap(find.text('16k'));
       await tester.pumpAndSettle();
 
-      expect(find.text('4096'), findsOneWidget);
-      expect(find.text('(Padrão)'), findsOneWidget);
-      expect(find.byTooltip('Padrão do Ollama (4.096 tokens)'), findsOneWidget);
-      expect(find.text('7168'), findsOneWidget);
-      expect(find.text('10240'), findsOneWidget);
-      expect(find.text('13312'), findsOneWidget);
-      expect(find.text('16384'), findsOneWidget);
-      expect(find.text('8192'), findsNothing);
-      expect(find.text('32768'), findsNothing);
-      expect(find.text('65536'), findsNothing);
-      expect(find.text('131072'), findsNothing);
+      expect(find.text('16k • 16.384 tokens'), findsOneWidget);
+      final maxSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(maxSlider.value, 2.0);
 
-      await tester.ensureVisible(find.text('16384'));
-      await tester.tap(find.text('16384'));
+      // Tapping the min endpoint jumps back to 4k (4096).
+      await tester.tap(find.text('4k'));
       await tester.pumpAndSettle();
+
+      expect(find.text('4k (Padrão) • 4.096 tokens'), findsOneWidget);
+
+      await tester.drag(
+        find.byKey(const Key('context_window_slider')),
+        const Offset(500, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('16k • 16.384 tokens'), findsOneWidget);
+      final updatedSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(updatedSlider.value, 2.0);
 
       await tester.ensureVisible(find.text('Salvar'));
       await tester.tap(find.text('Salvar'));
@@ -359,7 +412,51 @@ void main() {
       expect(capturedResult!.manualContextLength, 16384);
     });
 
-    testWidgets('changing model recalculates proportional presets and clamps selected num_ctx', (tester) async {
+    testWidgets('renders disabled context slider safely when model supports only 4096 tokens', (tester) async {
+      const model4k = OllamaModel(
+        name: 'tiny:latest',
+        model: 'tiny:latest',
+        size: 1000000000,
+        isLoaded: true,
+        maxContextLength: 4096,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: SettingsScreen(
+            initialArgs: const SettingsArgs(
+              selectedModelName: 'tiny:latest',
+              ollamaBaseUrl: 'http://localhost:11434',
+              availableModels: [model4k],
+              isOllamaConnected: true,
+              isModelLoaded: true,
+            ),
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+
+      expect(find.text('4k (Padrão) • 4.096 tokens'), findsOneWidget);
+      expect(find.text('4k'), findsOneWidget);
+      expect(
+        find.text('Máximo nativo do modelo ativo: 4.096 tokens'),
+        findsOneWidget,
+      );
+
+      final slider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(slider.min, 0.0);
+      expect(slider.max, 1.0);
+      expect(slider.value, 0.0);
+      expect(slider.onChanged, isNull);
+    });
+
+    testWidgets('changing model recalculates power-of-two slider steps and clamps selected num_ctx', (tester) async {
       SettingsResult? capturedResult;
       const modelWith64k = OllamaModel(
         name: 'qwen2.5:14b',
@@ -383,7 +480,7 @@ void main() {
             availableModels: [modelWith64k, modelLoaded],
             isModelLoaded: false,
             contextMode: ContextMode.manual,
-            manualContextLength: 36864,
+            manualContextLength: 32768,
           ),
           onPopped: (res) => capturedResult = res,
         ),
@@ -392,21 +489,21 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('36864'));
-      expect(find.text('4096'), findsOneWidget);
-      expect(find.text('(Padrão)'), findsOneWidget);
-      expect(find.text('20480'), findsOneWidget);
-      expect(find.text('36864'), findsOneWidget);
-      expect(find.text('49152'), findsOneWidget);
-      expect(find.text('65536'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+      expect(find.text('32k • 32.768 tokens'), findsOneWidget);
+      expect(find.text('4k'), findsOneWidget);
+      expect(find.text('8k'), findsNothing);
+      expect(find.text('16k'), findsNothing);
+      expect(find.text('32k'), findsNothing);
+      expect(find.text('64k'), findsOneWidget);
 
-      final initialChip = tester.widget<ChoiceChip>(
-        find.ancestor(
-          of: find.text('36864'),
-          matching: find.byType(ChoiceChip),
-        ),
+      final initialSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
       );
-      expect(initialChip.selected, isTrue);
+      expect(initialSlider.min, 0.0);
+      expect(initialSlider.max, 4.0);
+      expect(initialSlider.divisions, 4);
+      expect(initialSlider.value, 3.0);
 
       await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
       await tester.tap(find.byType(DropdownButtonFormField<String>));
@@ -418,24 +515,25 @@ void main() {
       verify(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
           .called(1);
 
-      await tester.ensureVisible(find.text('8192'));
-      expect(find.text('4096'), findsOneWidget);
-      expect(find.text('5120'), findsOneWidget);
-      expect(find.text('6144'), findsOneWidget);
-      expect(find.text('7168'), findsOneWidget);
-      expect(find.text('8192'), findsOneWidget);
-      expect(find.text('20480'), findsNothing);
-      expect(find.text('36864'), findsNothing);
-      expect(find.text('49152'), findsNothing);
-      expect(find.text('65536'), findsNothing);
-
-      final clampedChip = tester.widget<ChoiceChip>(
-        find.ancestor(
-          of: find.text('8192'),
-          matching: find.byType(ChoiceChip),
-        ),
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+      expect(find.text('8k • 8.192 tokens'), findsOneWidget);
+      expect(find.text('4k'), findsOneWidget);
+      expect(find.text('8k'), findsOneWidget);
+      expect(find.text('16k'), findsNothing);
+      expect(find.text('32k'), findsNothing);
+      expect(find.text('64k'), findsNothing);
+      expect(
+        find.text('Máximo nativo do modelo ativo: 8.192 tokens'),
+        findsOneWidget,
       );
-      expect(clampedChip.selected, isTrue);
+
+      final clampedSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(clampedSlider.min, 0.0);
+      expect(clampedSlider.max, 1.0);
+      expect(clampedSlider.divisions, 1);
+      expect(clampedSlider.value, 1.0);
 
       await tester.ensureVisible(find.text('Salvar'));
       await tester.tap(find.text('Salvar'));
@@ -563,6 +661,74 @@ void main() {
 
       expect(themeController.themeMode.value, ThemeMode.light);
       verify(() => mockRepository.saveThemeMode(ThemeMode.light)).called(1);
+    });
+
+    testWidgets('context slider renders 1M and decimal intermediate labels in dark theme and compact layout without overflow', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 480));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ContextWindowSection(
+                selectedContextLength: 1048576,
+                maxModelContext: 1048576,
+                onContextLengthChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('1M • 1.048.576 tokens'), findsOneWidget);
+      expect(find.text('4k'), findsOneWidget);
+      expect(find.text('8k'), findsNothing);
+      expect(find.text('512k'), findsNothing);
+      expect(find.text('1M'), findsOneWidget);
+
+      final darkSlider = tester.widget<Slider>(
+        find.byKey(const Key('context_window_slider')),
+      );
+      expect(darkSlider.activeColor, AppTheme.darkTheme.colorScheme.primary);
+      expect(darkSlider.thumbColor, AppTheme.darkTheme.colorScheme.primary);
+      expect(darkSlider.value, 8.0);
+      expect(darkSlider.divisions, 8);
+
+      final activeLegend = tester.widget<Text>(find.text('1M'));
+      expect(activeLegend.style?.fontWeight, FontWeight.bold);
+      expect(activeLegend.style?.color, AppTheme.darkTheme.colorScheme.primary);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ContextWindowSection(
+                selectedContextLength: 40000,
+                maxModelContext: 40000,
+                onContextLengthChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('39.1k • 40.000 tokens'), findsOneWidget);
+      expect(find.text('39.1k'), findsOneWidget);
+      expect(
+        find.text('Máximo nativo do modelo ativo: 40.000 tokens'),
+        findsOneWidget,
+      );
     });
   });
 }

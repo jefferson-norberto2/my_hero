@@ -204,16 +204,42 @@ void main() {
             modelB,
           ],
           contextMode: ContextMode.manual,
-          manualContextLength: 36864,
+          manualContextLength: 32768,
         ),
       );
 
       await controller.selectModel('llama3.2:3b');
 
       expect(controller.activeModelMaxContext, 131072);
-      expect(controller.manualContextLength.value, 36864);
+      expect(controller.manualContextLength.value, 32768);
       verify(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
           .called(1);
+    });
+
+    test('selectModel snaps non-power-of-two context length to closest valid step without exceeding new max', () async {
+      when(() => mockRepository.getModelMaxContextLength('llama3.2:3b'))
+          .thenAnswer((_) async => 50000);
+      when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
+      when(() => mockRepository.saveManualContextLength(any()))
+          .thenAnswer((_) async {});
+
+      await controller.init(
+        SettingsArgs(
+          selectedModelName: 'mimo-v2.6:9b',
+          ollamaBaseUrl: 'http://localhost:11434',
+          availableModels: [
+            modelA.copyWith(maxContextLength: 45000),
+            modelB,
+          ],
+          contextMode: ContextMode.manual,
+          manualContextLength: 45000,
+        ),
+      );
+
+      await controller.selectModel('llama3.2:3b');
+
+      expect(controller.activeModelMaxContext, 50000);
+      expect(controller.manualContextLength.value, 50000);
     });
 
     test('selectModel clamps manual context length to 4096 when switching to model with 4096 limit', () async {
@@ -232,7 +258,7 @@ void main() {
             modelB,
           ],
           contextMode: ContextMode.manual,
-          manualContextLength: 20480,
+          manualContextLength: 16384,
         ),
       );
 
@@ -242,7 +268,7 @@ void main() {
       expect(controller.manualContextLength.value, 4096);
     });
 
-    test('saveSettings persists context mode and manual preset', () async {
+    test('saveSettings persists context mode and manual preset selected via slider', () async {
       when(() => mockRepository.saveContextMode(any())).thenAnswer((_) async {});
       when(() => mockRepository.saveManualContextLength(any()))
           .thenAnswer((_) async {});
@@ -255,15 +281,14 @@ void main() {
         ),
       );
 
-      controller.selectContextMode(ContextMode.manual);
-      controller.selectManualContextLength(20480);
+      controller.selectManualContextLength(16384);
 
       final result = await controller.saveSettings();
 
       expect(result.contextMode, ContextMode.manual);
-      expect(result.manualContextLength, 20480);
+      expect(result.manualContextLength, 16384);
       verify(() => mockRepository.saveContextMode(ContextMode.manual)).called(1);
-      verify(() => mockRepository.saveManualContextLength(20480)).called(1);
+      verify(() => mockRepository.saveManualContextLength(16384)).called(1);
     });
 
     test('downloadModel tracks repository download stream and refreshes models on completion', () async {

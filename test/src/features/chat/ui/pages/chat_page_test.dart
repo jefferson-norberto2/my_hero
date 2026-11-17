@@ -236,12 +236,11 @@ void main() {
 
       expect(find.text('Configurações da Conversa'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Manual'));
-      await tester.tap(find.text('Manual'));
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.text('8192'));
-      await tester.tap(find.text('8192'));
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+      await tester.drag(
+        find.byKey(const Key('context_window_slider')),
+        const Offset(500, 0),
+      );
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.text('Salvar'));
@@ -263,8 +262,11 @@ void main() {
       await tester.tap(find.byIcon(Icons.tune));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Manual'));
-      await tester.tap(find.text('Manual'));
+      await tester.ensureVisible(find.byKey(const Key('context_window_slider')));
+      await tester.drag(
+        find.byKey(const Key('context_window_slider')),
+        const Offset(500, 0),
+      );
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.text('Cancelar'));
@@ -273,6 +275,7 @@ void main() {
 
       expect(find.text('mimo-v2.6:9b'), findsOneWidget);
       expect(chatController.contextMode.value, ContextMode.automatic);
+      expect(chatController.manualContextLength.value, 4096);
     });
 
     testWidgets('drawer settings entry navigates to SettingsScreen', (tester) async {

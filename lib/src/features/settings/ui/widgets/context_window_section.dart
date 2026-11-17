@@ -2,29 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:my_hero/src/core/theme/app_theme.dart';
 import 'package:my_hero/src/shared/models/context_settings.dart';
 
-/// Card section allowing selection between dynamic automatic `num_ctx` scaling
-/// and manual fixed context presets limited by the active model capacity.
+/// Card section displaying a discrete power-of-two `num_ctx` slider capped
+/// at the active model's native capacity.
 class ContextWindowSection extends StatelessWidget {
-  final ContextMode selectedMode;
-  final int manualContextLength;
+  final int selectedContextLength;
   final int maxModelContext;
-  final ValueChanged<ContextMode> onModeChanged;
-  final ValueChanged<int> onManualPresetSelected;
+  final ValueChanged<int> onContextLengthChanged;
 
   const ContextWindowSection({
     super.key,
-    required this.selectedMode,
-    required this.manualContextLength,
+    required this.selectedContextLength,
     required this.maxModelContext,
-    required this.onModeChanged,
-    required this.onManualPresetSelected,
+    required this.onContextLengthChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = AppThemeColors.of(context);
-    final allowedPresets = buildContextPresets(maxModelContext);
+    final presets = buildContextPresets(maxModelContext);
+    final effectiveLength = resolveClosestContextPreset(
+      selectedContextLength,
+      presets,
+    );
+    final selectedIndex = presets.indexOf(effectiveLength);
+    final isSliderEnabled = presets.length > 1;
+
+    final compactLabel = formatContextLabel(effectiveLength);
+    final exactTokens = ContextSettings.formatTokenCount(effectiveLength);
+    final badgeText = effectiveLength == ContextSettings.fallbackMaxContext
+        ? '$compactLabel (Padrão) • $exactTokens tokens'
+        : '$compactLabel • $exactTokens tokens';
 
     return Card(
       elevation: 0,
@@ -38,47 +46,105 @@ class ContextWindowSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Icon(Icons.data_usage_rounded, color: appColors.accent),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Janela de Contexto',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.data_usage_rounded, color: appColors.accent),
+                      const SizedBox(width: 8),
+                      const Flexible(
+                        child: Text(
+                          'Janela de Contexto',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<ContextMode>(
-              segments: [
-                ButtonSegment<ContextMode>(
-                  value: ContextMode.automatic,
-                  label: Text(ContextMode.automatic.label),
-                  icon: const Icon(Icons.auto_fix_high_outlined),
-                ),
-                ButtonSegment<ContextMode>(
-                  value: ContextMode.manual,
-                  label: Text(ContextMode.manual.label),
-                  icon: const Icon(Icons.tune),
-                ),
-              ],
-              selected: {selectedMode},
-              onSelectionChanged: (newSelection) {
-                onModeChanged(newSelection.first);
-              },
-            ),
-            const SizedBox(height: 10),
-            Text(
-              selectedMode.description,
-              style: TextStyle(
-                fontSize: 12,
-                color: appColors.infoSubtext,
-                fontStyle: FontStyle.italic,
+                  Container(
+                    key: const Key('context_window_value_badge'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: appColors.chipSelectedBackground,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color:
+                            appColors.chipSelectedBorder.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: appColors.chipSelectedText,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: Slider(
+                key: const Key('context_window_slider'),
+                min: 0,
+                max: isSliderEnabled ? (presets.length - 1).toDouble() : 1,
+                divisions: isSliderEnabled ? presets.length - 1 : null,
+                value: isSliderEnabled ? selectedIndex.toDouble() : 0,
+                label: isSliderEnabled ? compactLabel : null,
+                activeColor: theme.colorScheme.primary,
+                thumbColor: isSliderEnabled ? theme.colorScheme.primary : null,
+                inactiveColor:
+                    theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+                onChanged: isSliderEnabled
+                    ? (rawValue) {
+                        final index =
+                            rawValue.round().clamp(0, presets.length - 1);
+                        onContextLengthChanged(presets[index]);
+                      }
+                    : null,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildEndpointLabel(
+                    context: context,
+                    tokens: presets.first,
+                    isActive: effectiveLength == presets.first,
+                    isEnabled: isSliderEnabled,
+                  ),
+                  if (isSliderEnabled)
+                    _buildEndpointLabel(
+                      context: context,
+                      tokens: presets.last,
+                      isActive: effectiveLength == presets.last,
+                      isEnabled: true,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             Text(
               'Máximo nativo do modelo ativo: ${ContextSettings.formatTokenCount(maxModelContext)} tokens',
               style: TextStyle(
@@ -87,60 +153,38 @@ class ContextWindowSection extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (selectedMode == ContextMode.manual) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: allowedPresets.map((preset) {
-                  final isSelected = preset == manualContextLength;
-                  final isDefault =
-                      preset == ContextSettings.fallbackMaxContext;
-                  return Tooltip(
-                    message: isDefault
-                        ? 'Padrão do Ollama (4.096 tokens)'
-                        : '${ContextSettings.formatTokenCount(preset)} tokens',
-                    child: ChoiceChip(
-                      label: isDefault
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(preset.toString()),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '(Padrão)',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: isSelected
-                                        ? appColors.chipSelectedText
-                                            .withValues(alpha: 0.85)
-                                        : theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Text(preset.toString()),
-                      selected: isSelected,
-                      selectedColor: appColors.chipSelectedBackground,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? appColors.chipSelectedText
-                            : theme.colorScheme.onSurface,
-                      ),
-                      side: BorderSide(
-                        color: isSelected
-                            ? appColors.chipSelectedBorder
-                            : theme.colorScheme.outlineVariant,
-                      ),
-                      onSelected: (_) => onManualPresetSelected(preset),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEndpointLabel({
+    required BuildContext context,
+    required int tokens,
+    required bool isActive,
+    required bool isEnabled,
+  }) {
+    final theme = Theme.of(context);
+    final label = formatContextLabel(tokens);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: isEnabled ? () => onContextLengthChanged(tokens) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+              color: isActive
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
       ),
     );

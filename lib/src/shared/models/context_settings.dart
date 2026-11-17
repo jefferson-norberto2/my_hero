@@ -32,36 +32,61 @@ enum ContextMode {
   }
 }
 
-/// Generates up to 5 sorted, unique `num_ctx` options for a model supporting
-/// [maxContextLength] tokens (`4096` default plus up to 4 proportional steps).
+/// Generates an ascending, deduplicated list of power-of-two `num_ctx` steps
+/// starting at `4096` up to [maxContextLength].
 ///
-/// - When [maxContextLength] `<= 4096`, returns `[4096]`.
-/// - When [maxContextLength] `> 4096`, divides `(maxContextLength - 4096)` into
-///   4 equal intervals, rounding the 3 intermediate points to the nearest
-///   `4096` (when `maxContextLength > 16384`) or `1024` (when
-///   `maxContextLength <= 16384`), removing duplicates with a [Set].
+/// When [maxContextLength] is `<= 4096`, returns `[4096]`.
+/// When [maxContextLength] is `> 4096` and not an exact power of two,
+/// [maxContextLength] is appended as the final item.
 List<int> buildContextPresets(int maxContextLength) {
   const defaultCtx = ContextSettings.fallbackMaxContext;
   if (maxContextLength <= defaultCtx) {
     return const [defaultCtx];
   }
 
-  final roundingUnit = maxContextLength > 16384 ? 4096 : 1024;
-  final step = (maxContextLength - defaultCtx) / 4;
-  final presets = <int>{defaultCtx};
-
-  for (var i = 1; i <= 3; i++) {
-    final rawPoint = defaultCtx + (step * i);
-    final rounded = (rawPoint / roundingUnit).round() * roundingUnit;
-    if (rounded > defaultCtx && rounded < maxContextLength) {
-      presets.add(rounded);
-    }
+  final presets = <int>[defaultCtx];
+  var current = defaultCtx;
+  while (current <= maxContextLength ~/ 2) {
+    current *= 2;
+    presets.add(current);
   }
 
-  presets.add(maxContextLength);
+  if (presets.last != maxContextLength) {
+    presets.add(maxContextLength);
+  }
 
-  final sorted = presets.toList()..sort();
-  return List<int>.unmodifiable(sorted);
+  return List<int>.unmodifiable(presets);
+}
+
+/// Formats a context window token count into a compact label (`4k`, `39.1k`, `1M`).
+String formatContextLabel(int tokens) {
+  if (tokens <= 0) return '0';
+  if (tokens < 1024) return tokens.toString();
+  if (tokens % 1048576 == 0) {
+    return '${tokens ~/ 1048576}M';
+  }
+  if (tokens % 1024 == 0) {
+    return '${tokens ~/ 1024}k';
+  }
+  return '${(tokens / 1024).toStringAsFixed(1)}k';
+}
+
+/// Resolves [selectedLength] to the closest valid step in [presets]
+/// without exceeding the active model's maximum capacity represented by [presets].
+int resolveClosestContextPreset(int selectedLength, List<int> presets) {
+  if (presets.isEmpty) return ContextSettings.fallbackMaxContext;
+  if (presets.contains(selectedLength)) return selectedLength;
+
+  var closest = presets.first;
+  var smallestDiff = (closest - selectedLength).abs();
+  for (final preset in presets.skip(1)) {
+    final diff = (preset - selectedLength).abs();
+    if (diff < smallestDiff) {
+      smallestDiff = diff;
+      closest = preset;
+    }
+  }
+  return closest;
 }
 
 /// Shared constants and formatting helpers for context window configuration.

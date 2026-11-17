@@ -124,16 +124,17 @@ class SettingsController {
   }
 
   void selectManualContextLength(int length) {
+    contextMode.value = ContextMode.manual;
     manualContextLength.value = length;
     _clampManualContextLength();
   }
 
   void _clampManualContextLength() {
     final allowed = buildContextPresets(activeModelMaxContext);
-    if (allowed.contains(manualContextLength.value)) return;
-    final highestAllowed =
-        allowed.where((p) => p <= manualContextLength.value).lastOrNull;
-    manualContextLength.value = highestAllowed ?? allowed.first;
+    manualContextLength.value = resolveClosestContextPreset(
+      manualContextLength.value,
+      allowed,
+    );
   }
 
   Future<void> _fetchActiveModelMaxContext(String modelName) async {

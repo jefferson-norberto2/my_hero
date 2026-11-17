@@ -26,7 +26,6 @@ class ChatMetricsBadge extends StatelessWidget {
     final theme = Theme.of(context);
     final appColors = AppThemeColors.of(context);
     final usagePercent = metrics.contextUsagePercent;
-    final remainingPercent = metrics.remainingPercent;
     final badgeColor = _contextStatusColor(appColors, usagePercent);
     final computeMode = metrics.computeMode;
 
@@ -89,7 +88,7 @@ class ChatMetricsBadge extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Ctx: ${usagePercent.toStringAsFixed(0)}% (restam ${remainingPercent.toStringAsFixed(0)}%)',
+                      'Ctx: ${usagePercent.toStringAsFixed(0)}%',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

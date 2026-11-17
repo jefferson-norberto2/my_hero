@@ -163,9 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         final loadError = _controller.loadErrorMessage.value;
                         final isModelLoaded = _controller.isModelLoaded.value;
                         final downloadState = _controller.downloadState.value;
-                        final selectedContextMode =
-                            _controller.contextMode.value;
-                        final manualContextLength =
+                        final selectedContextLength =
                             _controller.manualContextLength.value;
                         final maxModelContext =
                             _controller.activeModelMaxContext;
@@ -211,11 +209,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             const SizedBox(height: 12),
                             ContextWindowSection(
-                              selectedMode: selectedContextMode,
-                              manualContextLength: manualContextLength,
+                              selectedContextLength: selectedContextLength,
                               maxModelContext: maxModelContext,
-                              onModeChanged: _controller.selectContextMode,
-                              onManualPresetSelected:
+                              onContextLengthChanged:
                                   _controller.selectManualContextLength,
                             ),
                             const SizedBox(height: 12),

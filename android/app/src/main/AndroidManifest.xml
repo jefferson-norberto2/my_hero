@@ -1,5 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Necessário no Android 14+ (API 34+) para downloads de modelos em foreground -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:label="my_hero"
         android:name="${applicationName}"
@@ -31,13 +36,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-            
-        <uses-native-library
-            android:name="libOpenCL.so"
-            android:required="false"/>
-        <uses-native-library android:name="libOpenCL-car.so" android:required="false"/>
-        <uses-native-library android:name="libOpenCL-pixel.so" android:required="false"/>
-        
+
+        <!-- Requerido pelo background_downloader no Android 14+ com foreground: true -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -21,7 +21,9 @@ class ChatBubble extends StatelessWidget {
     final isUser = message.isUser;
     final theme = Theme.of(context);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.85;
-    final isWaitingFirstToken = !isUser && message.text.isEmpty;
+    final hasThinking = !isUser && message.hasThinking;
+    final isWaitingFirstToken = !isUser && message.text.isEmpty && !hasThinking;
+    final isThinkingInProgress = !isUser && message.text.isEmpty && hasThinking;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -63,6 +65,11 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ),
               ),
+            if (hasThinking)
+              _ThinkingSection(
+                thinkingText: message.thinkingText!,
+                isInProgress: isThinkingInProgress,
+              ),
             if (isWaitingFirstToken)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4.0),
@@ -72,7 +79,7 @@ class ChatBubble extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            else
+            else if (message.text.isNotEmpty)
               GptMarkdown(
                 message.text,
                 style: TextStyle(
@@ -200,6 +207,114 @@ class ChatBubble extends StatelessWidget {
       const SnackBar(
         content: Text('Mensagem copiada para a área de transferência!'),
         duration: Duration(seconds: 2),
+      ),
+    );
+  }
+}
+
+class _ThinkingSection extends StatefulWidget {
+  final String thinkingText;
+  final bool isInProgress;
+
+  const _ThinkingSection({
+    required this.thinkingText,
+    required this.isInProgress,
+  });
+
+  @override
+  State<_ThinkingSection> createState() => _ThinkingSectionState();
+}
+
+class _ThinkingSectionState extends State<_ThinkingSection> {
+  late bool _isExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.isInProgress;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Colapsa automaticamente assim que a resposta final começa a chegar
+    if (oldWidget.isInProgress && !widget.isInProgress) {
+      _isExpanded = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.psychology_alt_rounded,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      widget.isInProgress ? 'Pensando...' : 'Pensamento',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  if (widget.isInProgress) ...[
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.8),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Icon(
+                    _isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              child: Text(
+                widget.thinkingText.trim(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                  height: 1.35,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

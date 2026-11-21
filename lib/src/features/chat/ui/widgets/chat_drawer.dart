@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../controller/chat_controller.dart';
 
 class ChatDrawer extends StatelessWidget {
@@ -97,7 +98,7 @@ class ChatDrawer extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '${item.is2B ? "Gemma 2B" : "Gemma 4B"} • ${item.responseStyle.label} • ${item.messages.length} msgs',
+                          '${item.is2B ? "Gemma 2B" : "Gemma 4B"} • ${AppConstants.backendLabel(item.preferredBackend)} • ${item.responseStyle.label}${item.enableThinking ? " • Thinking" : ""} • ${item.messages.length} msgs',
                           style: const TextStyle(fontSize: 11),
                         ),
                         trailing: IconButton(

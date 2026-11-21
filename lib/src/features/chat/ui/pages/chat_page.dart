@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../controller/chat_controller.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input_bar.dart';
@@ -53,7 +54,10 @@ class _ChatPageState extends State<ChatPage> {
             final conv = _controller.currentConversation;
             final isLoaded = _controller.isModelLoaded.value;
             final is2B = _controller.is2BModel.value;
-            final isCpu = _controller.isCpu;
+            final maxTokens = _controller.maxTokens.value;
+            final thinking = _controller.enableThinking.value;
+            final backendLabel = _controller.backendDisplaySummary;
+            final styleLabel = _controller.responseStyle.value.label;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,14 +65,18 @@ class _ChatPageState extends State<ChatPage> {
               children: [
                 Text(
                   conv?.title ?? 'Local Chat',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   isLoaded
-                      ? '${is2B ? "Modelo simples" : "Modelo avançado"} (${isCpu ? "Normal" : "Rápido"}) • ${_controller.responseStyle.value.label}'
+                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} ($backendLabel) • ${AppConstants.formatTokenCount(maxTokens)}${thinking ? " • Thinking" : ""} • $styleLabel'
                       : 'Nenhum modelo carregado',
                   style: const TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             );
@@ -85,7 +93,7 @@ class _ChatPageState extends State<ChatPage> {
 
               return IconButton(
                 icon: const Icon(Icons.tune),
-                tooltip: 'Alterar modelo (mantém contexto)',
+                tooltip: 'Configurações da conversa',
                 onPressed: isGenerating
                     ? null
                     : () => ModelSwitchDialog.show(context, _controller),
@@ -116,7 +124,14 @@ class _ChatPageState extends State<ChatPage> {
               builder: (context) {
                 final isLoaded = _controller.isModelLoaded.value;
                 if (isLoaded) return const SizedBox.shrink();
-                return ModelSelectorWidget(controller: _controller);
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.58,
+                  ),
+                  child: SingleChildScrollView(
+                    child: ModelSelectorWidget(controller: _controller),
+                  ),
+                );
               },
             ),
             Expanded(

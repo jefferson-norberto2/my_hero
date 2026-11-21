@@ -10,6 +10,10 @@ void main() {
   });
 
   group('GemmaLocalDatasourceImpl state validation', () {
+    test('activeBackend should be null before active model is initialized', () {
+      expect(datasource.activeBackend, isNull);
+    });
+
     test('createChat should throw StateError when active model is not initialized', () async {
       expect(
         () => datasource.createChat(),
@@ -51,12 +55,16 @@ void main() {
       );
     });
 
-    test('stopGeneration should not throw even when chat is null', () {
-      expect(() => datasource.stopGeneration(), returnsNormally);
+    test('stopGeneration should complete normally even when chat is null', () async {
+      await expectLater(datasource.stopGeneration(), completes);
     });
 
-    test('close should not throw when called without active model or chat', () {
-      expect(() => datasource.close(), returnsNormally);
+    test('close should complete normally when called without active model or chat', () async {
+      await expectLater(datasource.close(), completes);
+    });
+
+    test('cancelActiveDownload should not throw when no download is active', () {
+      expect(() => datasource.cancelActiveDownload(), returnsNormally);
     });
   });
 }

@@ -49,6 +49,23 @@ void main() {
       expect(updatedBytes.text, 'Texto inicial');
       expect(updatedBytes.isUser, isFalse);
       expect(updatedBytes.imageBytes, newBytes);
+
+      final updatedThinking = message.copyWith(thinkingText: 'Raciocínio');
+      expect(updatedThinking.hasThinking, isTrue);
+      expect(updatedThinking.thinkingText, 'Raciocínio');
+    });
+
+    test('toJson and fromJson should preserve thinkingText', () {
+      final original = ChatMessage(
+        text: 'Resposta final',
+        isUser: false,
+        thinkingText: 'Passo 1: pensar',
+      );
+
+      final restored = ChatMessage.fromJson(original.toJson());
+      expect(restored.text, 'Resposta final');
+      expect(restored.thinkingText, 'Passo 1: pensar');
+      expect(restored.hasThinking, isTrue);
     });
   });
 

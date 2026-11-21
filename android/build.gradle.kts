@@ -3,11 +3,6 @@ allprojects {
         google()
         mavenCentral()
     }
-    configurations.all {
-        resolutionStrategy {
-            force("com.google.ai.edge.litertlm:litertlm-android:0.11.0")
-        }
-    }
 }
 
 val newBuildDir: Directory =

@@ -31,18 +31,20 @@ void main() {
 
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
-    when(() => mockRepository.reset()).thenReturn(null);
+    when(() => mockRepository.reset()).thenAnswer((_) async {});
+    when(() => mockRepository.stopGeneration()).thenAnswer((_) async {});
 
     controller = ChatController(
       repository: mockRepository,
       mediaPickerService: mockMediaPicker,
+      platform: TargetPlatform.android,
     );
   });
 
-  Widget buildTestWidget() {
+  Widget buildTestWidget([ChatController? customController]) {
     return MaterialApp(
       home: Scaffold(
-        body: ChatInputBar(controller: controller),
+        body: ChatInputBar(controller: customController ?? controller),
       ),
     );
   }
@@ -84,7 +86,7 @@ void main() {
       expect(find.text('Imagem anexada'), findsNothing);
     });
 
-    testWidgets('shows bottom sheet modal when tapping photo icon', (tester) async {
+    testWidgets('shows bottom sheet modal with gallery and camera on Android', (tester) async {
       controller.isModelLoaded.value = true;
 
       await tester.pumpWidget(buildTestWidget());
@@ -95,6 +97,28 @@ void main() {
 
       expect(find.text('Galeria de fotos'), findsOneWidget);
       expect(find.text('Câmera'), findsOneWidget);
+    });
+
+    testWidgets('opens gallery directly without camera modal on Desktop (Linux/Windows)', (tester) async {
+      final desktopController = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        platform: TargetPlatform.linux,
+      );
+      desktopController.isModelLoaded.value = true;
+
+      when(() => mockMediaPicker.pickImageFromGallery())
+          .thenAnswer((_) async => kTransparentImage);
+
+      await tester.pumpWidget(buildTestWidget(desktopController));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.add_photo_alternate_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Câmera'), findsNothing);
+      verify(() => mockMediaPicker.pickImageFromGallery()).called(1);
+      expect(desktopController.attachedImage.value, kTransparentImage);
     });
   });
 }

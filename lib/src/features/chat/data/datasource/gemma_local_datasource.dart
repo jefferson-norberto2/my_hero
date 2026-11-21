@@ -1,74 +1,155 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
 import '../../../../core/constants/app_constants.dart';
 
 abstract class GemmaLocalDatasource {
+  PreferredBackend? get activeBackend;
+
   Future<void> initialize();
-  Future<void> installModelFromFile(String filePath, {ModelFileType? fileType});
+
+  Future<bool> isModelInstalled(String modelFileName);
+
+  Future<void> installModelFromNetwork({
+    required String url,
+    required void Function(int percent) onProgress,
+    ModelType modelType = ModelType.gemma4,
+    ModelFileType fileType = ModelFileType.litertlm,
+    CancelToken? cancelToken,
+  });
+
+  void cancelActiveDownload();
+
   Future<void> createActiveModel({
-    required bool useCpu,
+    required PreferredBackend preferredBackend,
+    required int maxTokens,
     bool supportImage = true,
     int maxNumImages = 1,
+    ActivationDataType? activationDataType,
   });
+
   Future<void> createChat({
+    ModelType modelType = ModelType.gemma4,
     String? systemInstruction,
     bool supportImage = true,
+    bool enableThinking = false,
+    double temperature = 0.8,
+    int topK = 40,
   });
+
   Future<void> addQueryChunk(Message message);
-  Stream<dynamic> generateChatResponseAsync();
-  void stopGeneration();
-  void close();
+
+  Stream<ModelResponse> generateChatResponseAsync();
+
+  Future<void> stopGeneration();
+
+  Future<void> close();
 }
 
 class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   InferenceModel? _activeModel;
   InferenceChat? _activeChat;
+  CancelToken? _activeDownloadCancelToken;
+
+  @override
+  PreferredBackend? get activeBackend => _activeModel?.activeBackend;
 
   @override
   Future<void> initialize() async {
-    await FlutterGemma.initialize();
+    await FlutterGemma.initialize(
+      inferenceEngines: [LiteRtLmEngine()],
+    );
   }
 
   @override
-  Future<void> installModelFromFile(String filePath, {ModelFileType? fileType}) async {
-    final effectiveFileType = fileType ??
-        (filePath.endsWith('.litertlm')
-            ? ModelFileType.litertlm
-            : (filePath.endsWith('.task')
-                ? ModelFileType.task
-                : ModelFileType.binary));
+  Future<bool> isModelInstalled(String modelFileName) async {
+    return FlutterGemma.isModelInstalled(modelFileName);
+  }
 
-    await FlutterGemma.installModel(
-      modelType: ModelType.gemmaIt,
-      fileType: effectiveFileType,
-    ).fromFile(filePath).install();
+  @override
+  Future<void> installModelFromNetwork({
+    required String url,
+    required void Function(int percent) onProgress,
+    ModelType modelType = ModelType.gemma4,
+    ModelFileType fileType = ModelFileType.litertlm,
+    CancelToken? cancelToken,
+  }) async {
+    final token = cancelToken ?? CancelToken();
+    _activeDownloadCancelToken = token;
+
+    final useForeground = !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android;
+
+    try {
+      await FlutterGemma.installModel(
+        modelType: modelType,
+        fileType: fileType,
+      )
+          .fromNetwork(url, foreground: useForeground)
+          .withProgress(onProgress)
+          .withCancelToken(token)
+          .install();
+    } finally {
+      if (identical(_activeDownloadCancelToken, token)) {
+        _activeDownloadCancelToken = null;
+      }
+    }
+  }
+
+  @override
+  void cancelActiveDownload() {
+    _activeDownloadCancelToken?.cancel('Download cancelado pelo usuário.');
+    _activeDownloadCancelToken = null;
   }
 
   @override
   Future<void> createActiveModel({
-    required bool useCpu,
+    required PreferredBackend preferredBackend,
+    required int maxTokens,
     bool supportImage = true,
     int maxNumImages = 1,
+    ActivationDataType? activationDataType,
   }) async {
-    final preferredBackend = useCpu ? PreferredBackend.cpu : PreferredBackend.gpu;
+    if (_activeChat != null) {
+      await _activeChat?.close();
+      _activeChat = null;
+    }
+
     _activeModel = await FlutterGemma.getActiveModel(
-      maxTokens: AppConstants.maxTokens,
+      maxTokens: maxTokens,
       preferredBackend: preferredBackend,
       supportImage: supportImage,
       maxNumImages: supportImage ? maxNumImages : null,
+      activationDataType: activationDataType,
     );
   }
 
   @override
   Future<void> createChat({
+    ModelType modelType = ModelType.gemma4,
     String? systemInstruction,
     bool supportImage = true,
+    bool enableThinking = false,
+    double temperature = 0.8,
+    int topK = 40,
   }) async {
     final model = _activeModel;
     if (model == null) {
       throw StateError('Modelo ativo do Gemma ainda não foi inicializado.');
     }
+
+    if (_activeChat != null) {
+      await _activeChat?.close();
+      _activeChat = null;
+    }
+
     _activeChat = await model.createChat(
+      modelType: modelType,
       supportImage: supportImage,
+      isThinking: enableThinking,
+      temperature: temperature,
+      topK: topK,
       systemInstruction: systemInstruction ?? AppConstants.systemInstruction,
     );
   }
@@ -83,7 +164,7 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   }
 
   @override
-  Stream<dynamic> generateChatResponseAsync() {
+  Stream<ModelResponse> generateChatResponseAsync() {
     final chat = _activeChat;
     if (chat == null) {
       throw StateError('Chat do Gemma não foi inicializado.');
@@ -92,14 +173,15 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   }
 
   @override
-  void stopGeneration() {
-    _activeChat?.stopGeneration();
+  Future<void> stopGeneration() async {
+    await _activeChat?.stopGeneration();
   }
 
   @override
-  void close() {
-    _activeModel?.close();
-    _activeModel = null;
+  Future<void> close() async {
+    await _activeChat?.close();
     _activeChat = null;
+    await _activeModel?.close();
+    _activeModel = null;
   }
 }

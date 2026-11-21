@@ -1,6 +1,6 @@
 # My Hero 🦸‍♂️
 
-Aplicativo Flutter para interação e execução local de modelos de Inteligência Artificial **Google Gemma** (2B e 4B) utilizando a biblioteca `flutter_gemma`, com suporte a streaming de respostas e envio de imagens.
+Aplicativo Flutter multiplataforma (**Android**, **Linux** e **Windows**) para interação e execução local de modelos de Inteligência Artificial **Google Gemma 4** (E2B e E4B) utilizando `flutter_gemma` (`1.11.4`) + `flutter_gemma_litertlm` (`1.8.6`) via **Dart FFI + Native Assets**, com suporte a streaming, **Thinking Mode**, seleção de **janela de contexto (`maxTokens`)**, escolha de backend (**CPU / GPU / NPU**) e envio de imagens.
 
 ---
 
@@ -10,9 +10,9 @@ O projeto segue a abordagem **Feature-First** (baseada em funcionalidades), com 
 
 ### Camadas Principais
 
-- **`core/`**: Infraestrutura transversal da aplicação. Contém definições de rede, injeção de dependência, constantes, temas e rotas globais.
-- **`shared/`**: Recursos compartilhados entre duas ou mais features, como componentes visuais genéricos, utilitários e serviços do sistema operacional (ex: câmera/galeria).
-- **`features/`**: Módulos independentes de negócio (ex: `chat`, `login`, etc.). Cada feature encapsula seus próprios dados, regras de estado e interface visual.
+- **`core/`**: Infraestrutura transversal da aplicação. Contém injeção de dependência, constantes/catálogo de modelos, temas e rotas globais.
+- **`shared/`**: Recursos compartilhados entre duas ou mais features, como serviços do sistema operacional (galeria/câmera).
+- **`features/`**: Módulos independentes de negócio (ex: `chat`). Cada feature encapsula seus próprios dados, regras de estado e interface visual.
 
 ---
 
@@ -20,17 +20,15 @@ O projeto segue a abordagem **Feature-First** (baseada em funcionalidades), com 
 
 ```text
 lib/
-├── main.dart                                                  # Ponto de entrada: inicialização de bindings, DI e runApp
+├── main.dart                                                  # Ponto de entrada: inicialização de bindings, DI, LiteRtLmEngine e runApp
 └── src/
     ├── app.dart                                               # Configuração do MaterialApp, tema e rotas globais
     │
     ├── core/                                                  # Infraestrutura global
     │   ├── constants/
-    │   │   └── app_constants.dart                             # URLs de download dos modelos, nomes de arquivos e parâmetros
+    │   │   └── app_constants.dart                             # Catálogo Gemma 4 (URLs, limites de tokens 1K–32K e suporte por plataforma)
     │   ├── di/
     │   │   └── injection.dart                                 # Injeção de dependências centralizada (GetIt)
-    │   ├── network/
-    │   │   └── dio_client.dart                                # Instância e configuração do Dio (timeouts, interceptors)
     │   ├── routes/
     │   │   └── app_routes.dart                                # Definição de rotas e navegação da aplicação
     │   └── theme/
@@ -38,35 +36,35 @@ lib/
     │
     ├── shared/                                                # Recursos reutilizáveis entre features
     │   └── services/
-    │       └── media_picker_service.dart                      # Abstração para captura de fotos da galeria (ImagePicker)
+    │       └── media_picker_service.dart                      # Abstração para seleção de imagens (Galeria / Câmera no mobile)
     │
     └── features/                                              # Módulos funcionais
-        └── chat/                                              # Feature de Chat com Gemma
+        └── chat/                                              # Feature de Chat com Gemma 4
             ├── data/                                          # Camada de Dados
             │   ├── adapter/
-            │   │   ├── chat_message_adapter.dart              # Modelos de domínio (ChatMessage) e conversores para o Gemma
-            │   │   └── conversation_model.dart                # Modelo de conversa (histórico de mensagens e modelo selecionado)
+            │   │   ├── chat_message_adapter.dart              # ChatMessage (texto, imagem, thinkingText), ChatStreamChunk e adapter Gemma
+            │   │   ├── conversation_model.dart                # Modelo de conversa (histórico, backend, maxTokens, thinking, estilo)
+            │   │   └── response_style.dart                    # Estilos de resposta (Breve, Simples, Detalhada)
             │   ├── datasource/
-            │   │   ├── chat_history_datasource.dart           # Persistência do histórico de conversas em disco local
-            │   │   ├── gemma_local_datasource.dart            # Comunicação de baixo nível com o plugin flutter_gemma
-            │   │   └── model_download_datasource.dart         # Download de arquivos com Dio e verificação no disco local
+            │   │   ├── chat_history_datasource.dart           # Persistência do histórico em disco (Application Support no Desktop)
+            │   │   └── gemma_local_datasource.dart            # Comunicação com flutter_gemma + LiteRtLmEngine (download nativo e FFI)
             │   └── repository/
             │       ├── chat_repository.dart                   # Interface/Contrato do repositório
-            │       └── chat_repository_impl.dart              # Implementação orquestrando os datasources e contexto
+            │       └── chat_repository_impl.dart              # Implementação orquestrando instalador nativo, inferência e histórico
             │
             ├── controller/                                    # Camada de Estado e Regras de Apresentação
             │   └── chat_controller.dart                       # Gerenciamento de estado reativo com Signals e conversas
             │
             └── ui/                                            # Camada de Interface do Usuário
                 ├── pages/
-                │   └── chat_page.dart                         # Tela principal com menu lateral e topo dinâmico
+                │   └── chat_page.dart                         # Tela principal com menu lateral e topo dinâmico (backend ativo)
                 └── widgets/
-                    ├── chat_bubble.dart                       # Renderização do balão de mensagem (texto e anexo)
-                    ├── chat_drawer.dart                       # Menu lateral hamburger com histórico e + Nova Conversa
-                    ├── chat_input_bar.dart                    # Barra inferior (input de texto, anexar foto, enviar/parar)
+                    ├── chat_bubble.dart                       # Balão de mensagem (Markdown, imagem e bloco retrátil de Pensamento)
+                    ├── chat_drawer.dart                       # Menu lateral com histórico e + Nova Conversa
+                    ├── chat_input_bar.dart                    # Barra inferior (texto, anexar imagem adaptada por plataforma, enviar/parar)
                     ├── chat_message_list.dart                 # Lista de mensagens com rolagem automática
-                    ├── model_selector_widget.dart             # Seleção CPU/GPU, botões 2B/4B e barra de progresso
-                    └── model_switch_dialog.dart               # Modal para troca dinâmica de modelo com preservação de contexto
+                    ├── model_selector_widget.dart             # Seleção CPU/GPU/NPU, maxTokens (1K–32K), Thinking e download nativo
+                    └── model_switch_dialog.dart               # Modal para troca dinâmica de modelo/backend/contexto/thinking
 ```
 
 ---
@@ -75,58 +73,28 @@ lib/
 
 ### 1. Injeção de Dependências (`get_it`)
 Localizada em `lib/src/core/di/injection.dart`.
-- **Singletons:** Serviços e fontes de dados com ciclo de vida único durante toda a execução da aplicação (`DioClient`, `MediaPickerService`, `GemmaLocalDatasource`, `ModelDownloadDatasource`, `ChatRepository`).
+- **Singletons:** Serviços e fontes de dados com ciclo de vida único (`MediaPickerService`, `GemmaLocalDatasource`, `ChatHistoryDatasource`, `ChatRepository`).
 - **Factories:** Instâncias criadas sob demanda por tela/ciclo de vida (`ChatController`).
 
 ### 2. Gerenciamento de Estado Reativo (`signals_flutter`)
-Os estados das features utilizam o conceito de **Signals** para obter reatividade granular e eficiente:
-- **`signal(valor)`**: Criação de variáveis reativas no Controller (`isModelLoaded`, `isLoading`, `isGenerating`, `downloadProgress`, `chatHistory`, etc.).
-- **`SignalBuilder`**: Construtor declarativo na UI que reconstrói exclusivamente o widget específico quando um sinal lido em seu escopo é alterado, eliminando rebuilds desnecessários da árvore inteira.
-- **`effect(() { ... })`**: Disparo de efeitos colaterais como alertas visuais (`SnackBar`) e mensagens de erro sem poluir o fluxo de build.
+Os estados das features utilizam **Signals** para reatividade granular (`SignalBuilder` e `effect`).
 
-### 3. Separação de Dados: Adapter, Datasource e Repository
-- **Adapter:** Converte entidades externas/DTOs (como `Message` do plugin Gemma) para modelos de domínio desacoplados do app (`ChatMessage`).
-- **Datasource:** Acessa uma única fonte de dados de forma crua (rede, banco local, plugin nativo).
-- **Repository:** Implementa o contrato de domínio, tratando erros e combinando múltiplos datasources se necessário.
+### 3. Engine Modular LiteRT-LM (`flutter_gemma 1.11.4` + `flutter_gemma_litertlm 1.8.6`)
+- **Dart FFI + Native Assets:** todas as plataformas nativas (Android, Linux e Windows) executam o LiteRT-LM (`v0.17.1-a`) diretamente via C API, sem JRE nem servidor gRPC.
+- **Instalador Nativo de Modelos:** downloads gerenciados por `FlutterGemma.installModel(...).fromNetwork(...)` com verificação idempotente, cancelamento via `CancelToken`, modo foreground no Android e armazenamento seguro fora de `Documents`/OneDrive no Windows (`%LOCALAPPDATA%\flutter_gemma`) e Linux (`~/.local/share/<app>/flutter_gemma`).
+- **Backends por Plataforma + Fallback Transparente:**
+  - **Linux:** `CPU` e `GPU` (Vulkan).
+  - **Windows (`x86_64`):** `CPU`, `GPU` (DirectX 12 / WebGPU com DXC embutido) e `NPU` (Intel LunarLake/PantherLake).
+  - **Android (`arm64-v8a`, `minSdk 30`):** `CPU`, `GPU` (OpenCL) e `NPU` (Qualcomm Snapdragon).
+  - Caso o acelerador solicitado não esteja disponível, o runtime realiza fallback automático (`NPU → GPU → CPU`) e o app exibe o `activeBackend` real na barra superior.
+- **Janela de Contexto (`maxTokens`) e Thinking Mode Configuráveis:** o usuário escolhe entre presets de `1K` a `32K` tokens (limites oficiais dos bundles Gemma 4 E2B/E4B) e ativa/desativa o **Modo Pensamento**, com bloco retrátil de raciocínio em cada resposta.
 
-### 4. Histórico de Conversas e Isolamento Total de Contexto
-- **Isolamento de Contexto entre Conversas:** Cada conversa possui sua própria sessão de inferência no Gemma. Ao criar uma nova conversa (`+ Nova Conversa`) ou alternar para outra conversa salva, a sessão anterior é descartada e uma nova sessão é iniciada via `startNewChatSession`, sincronizando exclusivamente as mensagens daquela conversa. Isso impede que dados de uma conversa (como o nome do usuário ou assuntos anteriores) vazem para outras conversas.
-- **Menu Lateral Hamburger (`ChatDrawer`):** Permite alternar entre conversas salvas, criar novas conversas (`+ Nova Conversa`) ou excluir sessões anteriores.
-- **Persistência Local (`ChatHistoryDatasource`):** Armazena todas as conversas e mensagens no armazenamento do dispositivo em formato JSON offline.
-- **Preservação de Contexto ao Trocar de Modelo (`ModelSwitchDialog`):** Ao alternar entre Gemma 2B e 4B (ou entre CPU e GPU) dentro de uma mesma conversa, a engine carrega o novo modelo e sincroniza o histórico recente de mensagens daquela conversa específica via `addQueryChunk`.
-- **Estilos de Resposta por Conversa (`ResponseStyle`):** Cada conversa permite configurar a profundidade desejada das respostas, concatenando automaticamente a instrução correspondente ao final do prompt enviado para o Gemma:
-  - ⚡ **Breve:** Concatena `"Por favor, seja breve e direto na resposta."`
-  - 💡 **Simples (Padrão):** Concatena `"Por favor, me dê alguns detalhes, mas não precisa se aprofundar."`
-  - 📚 **Detalhada:** Concatena `"Por favor, dê mais detalhes sobre o assunto."`
+### 4. Requisitos por Plataforma
 
-### 5. Análise de Imagem Multimodal (Visão Computacional Local)
-- **Habilitação de Visão no Gemma:** Os modelos ativos e as sessões de chat são inicializados com `supportImage: true` e detecção automática do formato de arquivo (`ModelFileType.litertlm`), permitindo que a engine LiteRT-LM aloque e execute os encoders visuais nativos.
-- **Captura Flexível de Mídia:** Suporte à seleção de imagens tanto da **Galeria** quanto diretamente pela **Câmera** através do `MediaPickerService`.
-- **Pré-visualização Interativa:** Ao anexar uma imagem, ela é exibida em miniatura acima da barra de entrada com botão para cancelamento/remoção, permitindo ao usuário digitar uma pergunta personalizada sobre a foto ou enviá-la diretamente com o prompt padrão de análise.
-
----
-
-## 🚀 Como Adicionar uma Nova Feature
-
-Para criar uma nova funcionalidade (por exemplo, `login` ou `history`), siga o padrão:
-
-1. Crie a pasta da feature em `lib/src/features/<nome_da_feature>/`:
-   ```text
-   features/<nome_da_feature>/
-   ├── data/
-   │   ├── adapter/
-   │   ├── datasource/
-   │   └── repository/
-   ├── controller/
-   └── ui/
-       ├── pages/
-       └── widgets/
-   ```
-2. Defina os contratos e implementações em `data/`.
-3. Crie o Controller gerenciando os estados através de `signals`.
-4. Registre o novo Datasource, Repository e Controller em `lib/src/core/di/injection.dart`.
-5. Construa os widgets e telas em `ui/` consumindo o Controller via `SignalBuilder`.
-6. Adicione a rota correspondente em `lib/src/core/routes/app_routes.dart`.
+- **SDK:** Flutter `>= 3.44.0` e Dart `>= 3.12.0`.
+- **Android:** `minSdk 30`, arquitetura `arm64-v8a` (emuladores `x86_64` e dispositivos 32-bit não suportam `.litertlm`).
+- **Linux (`x86_64` / `arm64`):** dependências de build `clang cmake ninja-build libgtk-3-dev lld`; para GPU, `libvulkan1` + driver Vulkan do fabricante (NVIDIA/AMD/Intel; `llvmpipe` faz fallback para CPU).
+- **Windows (`x86_64`):** Visual Studio com workload *Desktop development with C++* e `tar.exe` (nativo no Windows 10/11). Usuários finais não precisam instalar JRE nem VC++ Redistributable adicional.
 
 ---
 
@@ -142,12 +110,12 @@ Para criar uma nova funcionalidade (por exemplo, `login` ou `history`), siga o p
    flutter analyze
    ```
 
-3. **Executar testes unitários:**
+3. **Executar testes unitários e de widget:**
    ```bash
    flutter test
    ```
 
 4. **Executar a aplicação:**
    ```bash
-   flutter run
+   flutter run -d linux   # ou -d windows / -d android
    ```

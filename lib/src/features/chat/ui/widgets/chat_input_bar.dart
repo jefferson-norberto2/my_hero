@@ -29,6 +29,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
   }
 
+  void _handleMediaButtonTap() {
+    if (!widget.controller.supportsCamera) {
+      widget.controller.pickImage(fromCamera: false);
+      return;
+    }
+    _showMediaPickerOptions();
+  }
+
   void _showMediaPickerOptions() {
     showModalBottomSheet(
       context: context,
@@ -168,9 +176,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ),
                 ),
                 IconButton(
-                  onPressed: canType ? _showMediaPickerOptions : null,
+                  onPressed: canType ? _handleMediaButtonTap : null,
                   color: Colors.teal,
-                  tooltip: 'Anexar imagem (Galeria ou Câmera)',
+                  tooltip: widget.controller.supportsCamera
+                      ? 'Anexar imagem (Galeria ou Câmera)'
+                      : 'Anexar imagem',
                   icon: const Icon(Icons.add_photo_alternate_rounded),
                 ),
                 const SizedBox(width: 8),

@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../controller/chat_controller.dart';
 import '../../data/adapter/response_style.dart';
 
@@ -20,19 +24,37 @@ class ModelSwitchDialog extends StatefulWidget {
 
 class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
   late bool _selectedIs2B;
-  late bool _selectedUseCpu;
+  late PreferredBackend _selectedBackend;
+  late int _selectedMaxTokens;
+  late bool _selectedEnableThinking;
   late ResponseStyle _selectedResponseStyle;
 
   @override
   void initState() {
     super.initState();
     _selectedIs2B = widget.controller.is2BModel.value;
-    _selectedUseCpu = widget.controller.isCpu;
+    _selectedBackend = widget.controller.selectedBackend.value;
+    _selectedMaxTokens = widget.controller.maxTokens.value;
+    _selectedEnableThinking = widget.controller.enableThinking.value;
     _selectedResponseStyle = widget.controller.responseStyle.value;
+  }
+
+  IconData _backendIcon(PreferredBackend backend) {
+    return switch (backend) {
+      PreferredBackend.cpu => Icons.memory,
+      PreferredBackend.gpu => Icons.speed,
+      PreferredBackend.npu => Icons.auto_awesome,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final availableBackends = widget.controller.availableBackends;
+    final modelSpec = AppConstants.modelSpec(is2B: _selectedIs2B);
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+
     return AlertDialog(
       title: const Row(
         children: [
@@ -49,7 +71,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Modelo Gemma:',
+              'Modelo Gemma 4:',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -68,7 +90,13 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
               ],
               selected: {_selectedIs2B},
               onSelectionChanged: (newSelection) {
-                setState(() => _selectedIs2B = newSelection.first);
+                setState(() {
+                  _selectedIs2B = newSelection.first;
+                  _selectedMaxTokens = AppConstants.clampMaxTokens(
+                    _selectedMaxTokens,
+                    is2B: _selectedIs2B,
+                  );
+                });
               },
             ),
             const SizedBox(height: 16),
@@ -77,25 +105,80 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment<bool>(
-                  value: true,
-                  label: Text('CPU'),
-                  icon: Icon(Icons.memory),
-                ),
-                ButtonSegment<bool>(
-                  value: false,
-                  label: Text('GPU'),
-                  icon: Icon(Icons.speed),
-                ),
-              ],
-              selected: {_selectedUseCpu},
+            SegmentedButton<PreferredBackend>(
+              segments: availableBackends
+                  .map(
+                    (backend) => ButtonSegment<PreferredBackend>(
+                      value: backend,
+                      label: Text(AppConstants.backendLabel(backend)),
+                      icon: Icon(_backendIcon(backend)),
+                    ),
+                  )
+                  .toList(),
+              selected: {_selectedBackend},
               onSelectionChanged: (newSelection) {
-                setState(() => _selectedUseCpu = newSelection.first);
+                setState(() => _selectedBackend = newSelection.first);
               },
             ),
+            if (_selectedBackend == PreferredBackend.npu) ...[
+              const SizedBox(height: 6),
+              Text(
+                'NPU requer dispositivo compatível e modelo compilado para NPU; caso contrário, o fallback automático para GPU/CPU será aplicado.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
+            Text(
+              'Janela de contexto (${AppConstants.formatTokenCount(_selectedMaxTokens)} • máx. ${AppConstants.formatTokenCount(modelSpec.maxContextTokens)}):',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: AppConstants.contextTokenPresets.map((tokens) {
+                return ChoiceChip(
+                  label: Text(AppConstants.formatTokenCount(tokens)),
+                  selected: _selectedMaxTokens == tokens,
+                  onSelected: (_) {
+                    setState(() => _selectedMaxTokens = tokens);
+                  },
+                );
+              }).toList(),
+            ),
+            if (isMobile && _selectedMaxTokens >= 16384) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Atenção: contextos de 16K–32K exigem mais memória RAM no Android.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SwitchListTile.adaptive(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(
+                Icons.psychology_alt_outlined,
+                color: Colors.teal,
+              ),
+              title: const Text(
+                'Modo Pensamento (Thinking)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                'Mostra o raciocínio interno antes da resposta',
+                style: TextStyle(fontSize: 12),
+              ),
+              value: _selectedEnableThinking,
+              onChanged: (value) {
+                setState(() => _selectedEnableThinking = value);
+              },
+            ),
+            const SizedBox(height: 12),
             const Text(
               'Estilo de Resposta:',
               style: TextStyle(fontWeight: FontWeight.bold),
@@ -147,7 +230,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'O contexto desta conversa e o novo estilo serão mantidos para as próximas perguntas.',
+                      'O contexto desta conversa será mantido. Alterar modelo, backend ou janela de contexto recarrega o modelo; estilo e thinking aplicam instantaneamente.',
                       style: TextStyle(fontSize: 12, color: Colors.black87),
                     ),
                   ),
@@ -167,7 +250,9 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
             Navigator.of(context).pop();
             widget.controller.updateConversationSettings(
               is2B: _selectedIs2B,
-              useCpu: _selectedUseCpu,
+              preferredBackend: _selectedBackend,
+              maxTokens: _selectedMaxTokens,
+              enableThinking: _selectedEnableThinking,
               newResponseStyle: _selectedResponseStyle,
             );
           },

@@ -97,5 +97,39 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byType(GptMarkdown), findsNothing);
     });
+
+    testWidgets('renders collapsible thinking section when message has thinkingText', (tester) async {
+      final message = ChatMessage(
+        text: 'A resposta final é 42.',
+        thinkingText: 'Analisando o sentido da vida...',
+        isUser: false,
+      );
+
+      await tester.pumpWidget(buildTestableWidget(ChatBubble(message: message)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pensamento'), findsOneWidget);
+      // Começa recolhido quando a resposta final já está presente
+      expect(find.text('Analisando o sentido da vida...'), findsNothing);
+
+      await tester.tap(find.text('Pensamento'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Analisando o sentido da vida...'), findsOneWidget);
+    });
+
+    testWidgets('renders Thinking in progress expanded while final text is still empty', (tester) async {
+      final message = ChatMessage(
+        text: '',
+        thinkingText: 'Raciocinando passo a passo...',
+        isUser: false,
+      );
+
+      await tester.pumpWidget(buildTestableWidget(ChatBubble(message: message)));
+      await tester.pump();
+
+      expect(find.text('Pensando...'), findsOneWidget);
+      expect(find.text('Raciocinando passo a passo...'), findsOneWidget);
+    });
   });
 }

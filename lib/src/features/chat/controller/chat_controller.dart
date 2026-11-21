@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show TargetPlatform;
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../shared/services/media_picker_service.dart';
 import '../data/adapter/chat_message_adapter.dart';
 import '../data/adapter/conversation_model.dart';
@@ -9,12 +13,16 @@ import '../data/repository/chat_repository.dart';
 class ChatController {
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
+  final TargetPlatform? _platformOverride;
 
   ChatController({
-    required ChatRepository repository,
-    required MediaPickerService mediaPickerService,
-  })  : _repository = repository,
-        _mediaPickerService = mediaPickerService;
+    required this._repository,
+    required this._mediaPickerService,
+    TargetPlatform? platform,
+  })  : _platformOverride = platform,
+        maxTokens = signal<int>(
+          AppConstants.defaultMaxTokensForPlatform(platform),
+        );
 
   // Signals de estado reativo
   final isModelLoaded = signal(false);
@@ -22,8 +30,11 @@ class ChatController {
   final isGenerating = signal(false);
   final downloadProgress = signal(0.0);
   final loadingStatus = signal('');
-  final backendsSelected = signal<List<bool>>([true, false]); // [CPU, GPU]
+  final selectedBackend = signal<PreferredBackend>(PreferredBackend.cpu);
+  final activeBackend = signal<PreferredBackend?>(null);
   final is2BModel = signal<bool>(true);
+  final Signal<int> maxTokens;
+  final enableThinking = signal<bool>(false);
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
@@ -35,7 +46,32 @@ class ChatController {
 
   bool _stopGenerationFlag = false;
 
-  bool get isCpu => backendsSelected.value[0];
+  List<PreferredBackend> get availableBackends =>
+      AppConstants.availableBackendsForPlatform(_platformOverride);
+
+  bool get supportsNpu =>
+      AppConstants.supportsNpuOnPlatform(_platformOverride);
+
+  bool get supportsCamera =>
+      AppConstants.supportsCameraOnPlatform(_platformOverride);
+
+  bool get isCpu => selectedBackend.value == PreferredBackend.cpu;
+
+  GemmaModelSpec get currentModelSpec =>
+      AppConstants.modelSpec(is2B: is2BModel.value);
+
+  int get minSupportedContextTokens => currentModelSpec.minContextTokens;
+
+  int get maxSupportedContextTokens => currentModelSpec.maxContextTokens;
+
+  String get backendDisplaySummary {
+    final requested = selectedBackend.value;
+    final actual = activeBackend.value;
+    if (actual == null || actual == requested) {
+      return AppConstants.backendLabel(actual ?? requested);
+    }
+    return '${AppConstants.backendLabel(requested)} → ${AppConstants.backendLabel(actual)}';
+  }
 
   Conversation? get currentConversation {
     final id = currentConversationId.value;
@@ -45,6 +81,13 @@ class ChatController {
     } catch (_) {
       return null;
     }
+  }
+
+  PreferredBackend _normalizeBackendForPlatform(PreferredBackend backend) {
+    final available = availableBackends;
+    if (available.contains(backend)) return backend;
+    if (available.contains(PreferredBackend.gpu)) return PreferredBackend.gpu;
+    return PreferredBackend.cpu;
   }
 
   Future<void> init() async {
@@ -73,7 +116,9 @@ class ChatController {
       title: 'Nova Conversa',
       messages: [],
       is2B: is2BModel.value,
-      useCpu: isCpu,
+      preferredBackend: _normalizeBackendForPlatform(selectedBackend.value),
+      maxTokens: maxTokens.value,
+      enableThinking: enableThinking.value,
       responseStyle: responseStyle.value,
       createdAt: now,
       updatedAt: now,
@@ -90,6 +135,7 @@ class ChatController {
         await _repository.startNewChatSession(
           contextMessages: null,
           responseStyle: responseStyle.value,
+          enableThinking: enableThinking.value,
         );
       } catch (_) {}
     }
@@ -104,10 +150,19 @@ class ChatController {
     final conv = conversations.value.where((c) => c.id == id).firstOrNull;
     if (conv == null) return;
 
+    final normalizedBackend =
+        _normalizeBackendForPlatform(conv.preferredBackend);
+    final clampedTokens = AppConstants.clampMaxTokens(
+      conv.maxTokens,
+      is2B: conv.is2B,
+    );
+
     currentConversationId.value = conv.id;
     chatHistory.value = List.from(conv.messages);
     is2BModel.value = conv.is2B;
-    backendsSelected.value = [conv.useCpu, !conv.useCpu];
+    selectedBackend.value = normalizedBackend;
+    maxTokens.value = clampedTokens;
+    enableThinking.value = conv.enableThinking;
     responseStyle.value = conv.responseStyle;
 
     // Se o modelo estiver carregado, reinicia a sessão de chat e sincroniza
@@ -117,6 +172,7 @@ class ChatController {
         await _repository.startNewChatSession(
           contextMessages: conv.messages,
           responseStyle: conv.responseStyle,
+          enableThinking: conv.enableThinking,
         );
       } catch (_) {}
     }
@@ -139,32 +195,72 @@ class ChatController {
     await _repository.saveConversations(conversations.value);
   }
 
-  void selectBackend(int index) {
+  void selectBackend(PreferredBackend backend) {
     if (isLoading.value) return;
-    final updated = List<bool>.generate(
-      backendsSelected.value.length,
-      (i) => i == index,
-    );
-    backendsSelected.value = updated;
+    final normalized = _normalizeBackendForPlatform(backend);
+    selectedBackend.value = normalized;
 
     final conv = currentConversation;
     if (conv != null) {
-      conv.useCpu = isCpu;
+      conv.preferredBackend = normalized;
       _saveCurrentState();
     }
+  }
+
+  void setMaxTokens(int value) {
+    if (isLoading.value) return;
+    final clamped = AppConstants.clampMaxTokens(
+      value,
+      is2B: is2BModel.value,
+    );
+    maxTokens.value = clamped;
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.maxTokens = clamped;
+      _saveCurrentState();
+    }
+  }
+
+  void setEnableThinking(bool enabled) {
+    if (isLoading.value) return;
+    enableThinking.value = enabled;
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.enableThinking = enabled;
+      _saveCurrentState();
+    }
+  }
+
+  void cancelDownload() {
+    if (!isLoading.value) return;
+    loadingStatus.value = 'Cancelando download...';
+    _repository.cancelDownload();
   }
 
   Future<void> downloadAndLoadModel({
     bool is2B = true,
     List<ChatMessage>? contextMessages,
     ResponseStyle? responseStyle,
+    PreferredBackend? preferredBackend,
+    int? maxTokens,
+    bool? enableThinking,
   }) async {
     isLoading.value = true;
     downloadProgress.value = 0.0;
     loadingStatus.value = 'Verificando armazenamento local...';
     errorMessage.value = null;
 
-    final fileName = is2B ? 'gemma_2b.litertlm' : 'gemma_4b.litertlm';
+    final spec = AppConstants.modelSpec(is2B: is2B);
+    final targetBackend = _normalizeBackendForPlatform(
+      preferredBackend ?? selectedBackend.value,
+    );
+    final targetMaxTokens = AppConstants.clampMaxTokens(
+      maxTokens ?? this.maxTokens.value,
+      is2B: is2B,
+    );
+    final targetThinking = enableThinking ?? this.enableThinking.value;
     final targetStyle = responseStyle ?? this.responseStyle.value;
 
     try {
@@ -172,16 +268,24 @@ class ChatController {
 
       await _repository.loadModel(
         is2B: is2B,
-        useCpu: isCpu,
+        preferredBackend: targetBackend,
+        maxTokens: targetMaxTokens,
         onProgress: (progress, status) {
           downloadProgress.value = progress;
           loadingStatus.value = status;
         },
         contextMessages: messagesToSync,
         responseStyle: targetStyle,
+        enableThinking: targetThinking,
       );
 
+      final actualBackend = _repository.activeBackend ?? targetBackend;
+
       is2BModel.value = is2B;
+      selectedBackend.value = targetBackend;
+      activeBackend.value = actualBackend;
+      this.maxTokens.value = targetMaxTokens;
+      this.enableThinking.value = targetThinking;
       this.responseStyle.value = targetStyle;
       isModelLoaded.value = true;
       isLoading.value = false;
@@ -189,68 +293,98 @@ class ChatController {
       final conv = currentConversation;
       if (conv != null) {
         conv.is2B = is2B;
-        conv.useCpu = isCpu;
+        conv.preferredBackend = targetBackend;
+        conv.maxTokens = targetMaxTokens;
+        conv.enableThinking = targetThinking;
         conv.responseStyle = targetStyle;
         _saveCurrentState();
       }
 
-      final contextNote = (messagesToSync.isNotEmpty)
-          ? ' Contexto sincronizado (${targetStyle.label})!'
-          : ' (${targetStyle.label})';
+      final backendNote = actualBackend == targetBackend
+          ? AppConstants.backendLabel(actualBackend)
+          : '${AppConstants.backendLabel(targetBackend)} → ${AppConstants.backendLabel(actualBackend)} (fallback)';
+      final thinkingNote = targetThinking ? ' • Thinking ativo' : '';
+      final contextNote = messagesToSync.isNotEmpty
+          ? ' Contexto sincronizado'
+          : '';
 
       chatHistory.value = [
         ...chatHistory.value,
         ChatMessage(
-          text: 'Sistema: Modelo $fileName carregado com sucesso!$contextNote',
+          text:
+              'Sistema: Modelo ${spec.displayName} carregado ($backendNote • ${AppConstants.formatTokenCount(targetMaxTokens)} tokens$thinkingNote • ${targetStyle.label}).$contextNote',
           isUser: false,
         ),
       ];
       _syncMessagesToCurrentConversation();
+      await _saveCurrentState();
+    } on DownloadCancelledException {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      errorMessage.value = 'Download cancelado pelo usuário.';
     } catch (e) {
       isLoading.value = false;
       errorMessage.value = 'Falha ao carregar o modelo: $e';
     }
   }
 
-  /// Altera as configurações da conversa (modelo, backend e estilo de resposta)
+  /// Altera as configurações da conversa (modelo, backend, maxTokens, thinking e estilo)
   Future<void> updateConversationSettings({
     required bool is2B,
-    required bool useCpu,
+    required PreferredBackend preferredBackend,
+    required int maxTokens,
+    required bool enableThinking,
     required ResponseStyle newResponseStyle,
   }) async {
     if (isLoading.value || isGenerating.value) return;
 
-    final modelOrBackendChanged = (is2B != is2BModel.value) || (useCpu != isCpu);
-    final styleChanged = newResponseStyle != responseStyle.value;
+    final normalizedBackend = _normalizeBackendForPlatform(preferredBackend);
+    final clampedTokens = AppConstants.clampMaxTokens(maxTokens, is2B: is2B);
 
-    if (!modelOrBackendChanged && !styleChanged) return;
+    final requiresModelReload = (is2B != is2BModel.value) ||
+        (normalizedBackend != selectedBackend.value) ||
+        (clampedTokens != this.maxTokens.value);
+    final requiresSessionRestart = (newResponseStyle != responseStyle.value) ||
+        (enableThinking != this.enableThinking.value);
+
+    if (!requiresModelReload && !requiresSessionRestart) return;
 
     responseStyle.value = newResponseStyle;
-    backendsSelected.value = [useCpu, !useCpu];
+    selectedBackend.value = normalizedBackend;
+    this.maxTokens.value = clampedTokens;
+    this.enableThinking.value = enableThinking;
 
     final conv = currentConversation;
     if (conv != null) {
       conv.is2B = is2B;
-      conv.useCpu = useCpu;
+      conv.preferredBackend = normalizedBackend;
+      conv.maxTokens = clampedTokens;
+      conv.enableThinking = enableThinking;
       conv.responseStyle = newResponseStyle;
       await _saveCurrentState();
     }
 
-    if (modelOrBackendChanged) {
+    if (requiresModelReload) {
       await downloadAndLoadModel(
         is2B: is2B,
+        preferredBackend: normalizedBackend,
+        maxTokens: clampedTokens,
+        enableThinking: enableThinking,
         contextMessages: chatHistory.value,
         responseStyle: newResponseStyle,
       );
-    } else if (styleChanged && isModelLoaded.value) {
+    } else if (requiresSessionRestart && isModelLoaded.value) {
       await _repository.startNewChatSession(
         contextMessages: chatHistory.value,
         responseStyle: newResponseStyle,
+        enableThinking: enableThinking,
       );
+      final thinkingStatus = enableThinking ? 'ativado' : 'desativado';
       chatHistory.value = [
         ...chatHistory.value,
         ChatMessage(
-          text: 'Sistema: Estilo de resposta alterado para "${newResponseStyle.label}".',
+          text:
+              'Sistema: Configurações atualizadas (Estilo: "${newResponseStyle.label}" • Thinking $thinkingStatus).',
           isUser: false,
         ),
       ];
@@ -262,11 +396,13 @@ class ChatController {
   /// Mantido para compatibilidade
   Future<void> switchModelWithContext({
     required bool is2B,
-    required bool useCpu,
+    required PreferredBackend preferredBackend,
   }) async {
     await updateConversationSettings(
       is2B: is2B,
-      useCpu: useCpu,
+      preferredBackend: preferredBackend,
+      maxTokens: maxTokens.value,
+      enableThinking: enableThinking.value,
       newResponseStyle: responseStyle.value,
     );
   }
@@ -281,7 +417,8 @@ class ChatController {
 
   Future<void> pickImage({bool fromCamera = false}) async {
     try {
-      final imageBytes = fromCamera
+      final useCamera = fromCamera && supportsCamera;
+      final imageBytes = useCamera
           ? await _mediaPickerService.pickImageFromCamera()
           : await _mediaPickerService.pickImageFromGallery();
       if (imageBytes != null) {
@@ -306,7 +443,9 @@ class ChatController {
         ? 'Analise esta imagem'
         : trimmedText;
 
-    if (effectiveText.isEmpty || !isModelLoaded.value || isGenerating.value) return;
+    if (effectiveText.isEmpty || !isModelLoaded.value || isGenerating.value) {
+      return;
+    }
 
     attachedImage.value = null;
     _stopGenerationFlag = false;
@@ -314,7 +453,8 @@ class ChatController {
 
     // Atualiza o título se for uma conversa nova
     final conv = currentConversation;
-    if (conv != null && (conv.title == 'Nova Conversa' || conv.messages.isEmpty)) {
+    if (conv != null &&
+        (conv.title == 'Nova Conversa' || conv.messages.isEmpty)) {
       conv.title = effectiveText.length > 25
           ? '${effectiveText.substring(0, 25)}...'
           : effectiveText;
@@ -336,16 +476,23 @@ class ChatController {
         imageBytes: image,
       );
 
-      await for (final token in stream) {
+      await for (final chunk in stream) {
         if (_stopGenerationFlag) break;
 
         final currentList = List<ChatMessage>.from(chatHistory.value);
         final lastIndex = currentList.length - 1;
         final lastMsg = currentList[lastIndex];
 
-        currentList[lastIndex] = lastMsg.copyWith(
-          text: lastMsg.text + token,
-        );
+        switch (chunk) {
+          case ChatTextChunk(:final token):
+            currentList[lastIndex] = lastMsg.copyWith(
+              text: lastMsg.text + token,
+            );
+          case ChatThinkingChunk(:final content):
+            currentList[lastIndex] = lastMsg.copyWith(
+              thinkingText: (lastMsg.thinkingText ?? '') + content,
+            );
+        }
         chatHistory.value = currentList;
       }
     } catch (e) {
@@ -364,9 +511,13 @@ class ChatController {
     }
   }
 
-  Future<void> pickAndSendImage(String currentText, {bool fromCamera = false}) async {
+  Future<void> pickAndSendImage(
+    String currentText, {
+    bool fromCamera = false,
+  }) async {
     try {
-      final imageBytes = fromCamera
+      final useCamera = fromCamera && supportsCamera;
+      final imageBytes = useCamera
           ? await _mediaPickerService.pickImageFromCamera()
           : await _mediaPickerService.pickImageFromGallery();
       if (imageBytes != null) {
@@ -399,23 +550,24 @@ class ChatController {
     await _repository.saveConversations(conversations.value);
   }
 
-  void stopGeneration() {
+  Future<void> stopGeneration() async {
     if (isGenerating.value) {
       _stopGenerationFlag = true;
-      _repository.stopGeneration();
+      await _repository.stopGeneration();
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
-      _saveCurrentState();
+      await _saveCurrentState();
     }
   }
 
-  void reset() {
+  Future<void> reset() async {
     if (isGenerating.value) return;
-    _repository.reset();
+    await _repository.reset();
     isModelLoaded.value = false;
+    activeBackend.value = null;
   }
 
   void dispose() {
-    _repository.reset();
+    unawaited(_repository.reset());
   }
 }

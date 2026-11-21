@@ -1,49 +1,81 @@
 import 'dart:typed_data';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
 import '../adapter/response_style.dart';
 import '../datasource/chat_history_datasource.dart';
 import '../datasource/gemma_local_datasource.dart';
-import '../datasource/model_download_datasource.dart';
 import 'chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final GemmaLocalDatasource _gemmaDatasource;
-  final ModelDownloadDatasource _downloadDatasource;
   final ChatHistoryDatasource _historyDatasource;
 
   ChatRepositoryImpl({
-    required GemmaLocalDatasource gemmaDatasource,
-    required ModelDownloadDatasource downloadDatasource,
-    required ChatHistoryDatasource historyDatasource,
-  })  : _gemmaDatasource = gemmaDatasource,
-        _downloadDatasource = downloadDatasource,
-        _historyDatasource = historyDatasource;
+    required this._gemmaDatasource,
+    required this._historyDatasource,
+  });
+
+  @override
+  PreferredBackend? get activeBackend => _gemmaDatasource.activeBackend;
+
+  @override
+  Future<bool> isModelInstalled({required bool is2B}) {
+    final spec = AppConstants.modelSpec(is2B: is2B);
+    return _gemmaDatasource.isModelInstalled(spec.fileName);
+  }
 
   @override
   Future<void> loadModel({
     required bool is2B,
-    required bool useCpu,
+    required PreferredBackend preferredBackend,
+    required int maxTokens,
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
     bool supportImage = true,
+    bool enableThinking = false,
   }) async {
+    final spec = AppConstants.modelSpec(is2B: is2B);
+    final safeMaxTokens = AppConstants.clampMaxTokens(maxTokens, is2B: is2B);
+
     onProgress(0.0, 'Verificando armazenamento local...');
-    final filePath = await _downloadDatasource.downloadModel(
-      is2B: is2B,
-      onProgress: onProgress,
+    final alreadyInstalled =
+        await _gemmaDatasource.isModelInstalled(spec.fileName);
+
+    if (alreadyInstalled) {
+      onProgress(1.0, 'Modelo ${spec.displayName} encontrado localmente.');
+    } else {
+      onProgress(0.0, 'Iniciando download de ${spec.displayName}...');
+    }
+
+    await _gemmaDatasource.installModelFromNetwork(
+      url: spec.downloadUrl,
+      modelType: spec.modelType,
+      fileType: spec.fileType,
+      onProgress: (percent) {
+        final normalized = (percent / 100.0).clamp(0.0, 1.0);
+        onProgress(
+          normalized,
+          'Baixando ${spec.displayName}: $percent%',
+        );
+      },
     );
 
-    onProgress(1.0, 'Carregando modelo na memória...');
-    await _gemmaDatasource.installModelFromFile(filePath);
+    onProgress(
+      1.0,
+      'Carregando ${spec.displayName} (${AppConstants.backendLabel(preferredBackend)}, ${AppConstants.formatTokenCount(safeMaxTokens)} tokens)...',
+    );
     await _gemmaDatasource.createActiveModel(
-      useCpu: useCpu,
+      preferredBackend: preferredBackend,
+      maxTokens: safeMaxTokens,
       supportImage: supportImage,
     );
     await _gemmaDatasource.createChat(
+      modelType: spec.modelType,
       supportImage: supportImage,
+      enableThinking: enableThinking,
       systemInstruction: responseStyle.systemInstruction,
     );
 
@@ -52,14 +84,22 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  void cancelDownload() {
+    _gemmaDatasource.cancelActiveDownload();
+  }
+
+  @override
   Future<void> startNewChatSession({
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
     bool supportImage = true,
+    bool enableThinking = false,
   }) async {
     // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
     await _gemmaDatasource.createChat(
+      modelType: ModelType.gemma4,
       supportImage: supportImage,
+      enableThinking: enableThinking,
       systemInstruction: responseStyle.systemInstruction,
     );
 
@@ -86,7 +126,7 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Stream<String> sendMessage({
+  Stream<ChatStreamChunk> sendMessage({
     required String text,
     Uint8List? imageBytes,
   }) async* {
@@ -98,20 +138,25 @@ class ChatRepositoryImpl implements ChatRepository {
     final responseStream = _gemmaDatasource.generateChatResponseAsync();
 
     await for (final chunk in responseStream) {
-      if (chunk is TextResponse) {
-        yield chunk.token;
+      switch (chunk) {
+        case TextResponse(:final token):
+          yield ChatTextChunk(token);
+        case ThinkingResponse(:final content):
+          yield ChatThinkingChunk(content);
+        case FunctionCallResponse() || ParallelFunctionCallResponse():
+          break;
       }
     }
   }
 
   @override
-  void stopGeneration() {
-    _gemmaDatasource.stopGeneration();
+  Future<void> stopGeneration() async {
+    await _gemmaDatasource.stopGeneration();
   }
 
   @override
-  void reset() {
-    _gemmaDatasource.close();
+  Future<void> reset() async {
+    await _gemmaDatasource.close();
   }
 
   @override

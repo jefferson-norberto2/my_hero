@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
@@ -9,10 +10,13 @@ import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/shared/services/inference_notification_service.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
 class MockChatRepository extends Mock implements ChatRepository {}
 class MockMediaPickerService extends Mock implements MediaPickerService {}
+class MockInferenceNotificationService extends Mock
+    implements InferenceNotificationService {}
 
 void main() {
   late MockChatRepository mockRepository;
@@ -454,6 +458,144 @@ void main() {
       expect(controller.isLoading.value, isFalse);
       expect(controller.errorMessage.value, contains('Erro de conexão'));
       expect(controller.errorMessage.value, contains('timeout'));
+    });
+  });
+
+  group('ChatController - Background Inference Notification', () {
+    late MockInferenceNotificationService mockNotificationService;
+    late ChatController notifiedController;
+    Future<void> Function()? capturedStopCallback;
+
+    setUp(() {
+      mockNotificationService = MockInferenceNotificationService();
+      capturedStopCallback = null;
+
+      when(() => mockNotificationService.setOnStopRequested(any()))
+          .thenAnswer((invocation) {
+        capturedStopCallback =
+            invocation.positionalArguments.first as Future<void> Function()?;
+      });
+      when(
+        () => mockNotificationService.start(
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockNotificationService.update(
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockNotificationService.stop(
+          notifyIfBackgrounded: any(named: 'notifyIfBackgrounded'),
+          completedTitle: any(named: 'completedTitle'),
+          completedBody: any(named: 'completedBody'),
+        ),
+      ).thenAnswer((_) async {});
+
+      notifiedController = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        inferenceNotificationService: mockNotificationService,
+        platform: TargetPlatform.android,
+      );
+      notifiedController.isModelLoaded.value = true;
+    });
+
+    test('should start thinking notification, transition to answering once, and notify completion', () async {
+      notifiedController.setEnableThinking(true);
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+        ),
+      ).thenAnswer(
+        (_) => Stream.fromIterable([
+          const ChatThinkingChunk('Analisando...'),
+          const ChatThinkingChunk(' quase lá.'),
+          const ChatTextChunk('Resposta '),
+          const ChatTextChunk('final completa.'),
+        ]),
+      );
+
+      await notifiedController.sendMessage('Explique gravidade');
+
+      verify(
+        () => mockNotificationService.start(
+          title: 'My Hero • Gemma 4 E2B',
+          body: 'Pensando na resposta...',
+        ),
+      ).called(1);
+      verify(
+        () => mockNotificationService.update(
+          title: 'My Hero • Gemma 4 E2B',
+          body: 'Gerando resposta...',
+        ),
+      ).called(1);
+      verify(
+        () => mockNotificationService.stop(
+          notifyIfBackgrounded: true,
+          completedTitle: 'Resposta pronta (Gemma 4 E2B)',
+          completedBody: 'Resposta final completa.',
+        ),
+      ).called(1);
+    });
+
+    test('should stop generation without completion notification when stopped from notification action', () async {
+      final streamController = StreamController<ChatStreamChunk>();
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+        ),
+      ).thenAnswer((_) => streamController.stream);
+      when(() => mockRepository.stopGeneration()).thenAnswer((_) async {
+        await streamController.close();
+      });
+
+      final sendFuture = notifiedController.sendMessage('Conte uma história longa');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(capturedStopCallback, isNotNull);
+      await capturedStopCallback!.call();
+      await sendFuture;
+
+      expect(notifiedController.isGenerating.value, isFalse);
+      verify(() => mockRepository.stopGeneration()).called(1);
+      verifyNever(
+        () => mockNotificationService.stop(
+          notifyIfBackgrounded: true,
+          completedTitle: any(named: 'completedTitle'),
+          completedBody: any(named: 'completedBody'),
+        ),
+      );
+    });
+
+    test('should stop notification without completion alert on inference error', () async {
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+        ),
+      ).thenAnswer(
+        (_) => Stream<ChatStreamChunk>.error(
+          const ContextLimitException('Context full'),
+        ),
+      );
+
+      await notifiedController.sendMessage('Prompt muito grande');
+
+      verify(
+        () => mockNotificationService.stop(
+          notifyIfBackgrounded: false,
+          completedTitle: null,
+          completedBody: null,
+        ),
+      ).called(1);
     });
   });
 }

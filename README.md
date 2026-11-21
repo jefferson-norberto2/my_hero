@@ -36,6 +36,7 @@ lib/
     │
     ├── shared/                                                # Recursos reutilizáveis entre features
     │   └── services/
+    │       ├── inference_notification_service.dart            # Foreground Service Android para inferência em segundo plano + notificação
     │       └── media_picker_service.dart                      # Abstração para seleção de imagens (Galeria / Câmera no mobile)
     │
     └── features/                                              # Módulos funcionais
@@ -89,6 +90,7 @@ Os estados das features utilizam **Signals** para reatividade granular (`SignalB
   - **Android (`arm64-v8a`, `minSdk 30`):** `CPU` e `GPU` (OpenCL) embarcados por padrão (mantendo o APK enxuto); NPUs (Qualcomm Snapdragon / Google Tensor) são opt-in via `hooks: user_defines: litertlm_dart:` no `pubspec.yaml` quando utilizadas variantes compiladas por SoC.
   - Em bundles genéricos ou quando o acelerador solicitado não está disponível, o runtime lê o cabeçalho do `.litertlm` e realiza fallback automático (`NPU → GPU → CPU`), exibindo o `activeBackend` real na barra superior.
 - **Janela de Contexto (`maxTokens`) e Thinking Mode Configuráveis:** o usuário escolhe entre presets de `1K` a `32K` tokens (limites oficiais dos bundles Gemma 4 E2B/E4B) e ativa/desativa o **Modo Pensamento**, com bloco retrátil de raciocínio em cada resposta.
+- **Geração em Segundo Plano no Android (`InferenceForegroundService`):** durante a inferência, um Foreground Service (`shortService` no Android 14+) com `PARTIAL_WAKE_LOCK` mantém o pensamento e a geração ativos mesmo ao minimizar o app ou bloquear a tela, exibindo notificação silenciosa (**"Pensando na resposta..."** / **"Gerando resposta..."**) com botão **"Parar"** e notificação **"Resposta pronta"** caso o modelo termine em segundo plano.
 
 ### 4. Requisitos por Plataforma
 

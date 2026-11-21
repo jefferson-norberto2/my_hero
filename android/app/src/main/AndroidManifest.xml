@@ -2,10 +2,14 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Necessário no Android 13+ (API 33+) para exibir a notificação de progresso e promover o download a Foreground Service -->
+    <!-- Necessário no Android 13+ (API 33+) para exibir notificações de download e geração de resposta -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Necessário para serviços em primeiro plano (download e geração de resposta em segundo plano) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Necessário no Android 14+ (API 34+) para downloads de modelos em foreground -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Mantém a CPU ativa enquanto o modelo pensa/gera resposta com a tela bloqueada -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:label="my_hero"
@@ -44,6 +48,12 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+
+        <!-- Mantém a geração de respostas (incluindo Thinking Mode) ativa em segundo plano -->
+        <service
+            android:name=".InferenceForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

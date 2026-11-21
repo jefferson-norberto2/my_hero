@@ -5,6 +5,7 @@ import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../shared/services/inference_notification_service.dart';
 import '../../../shared/services/media_picker_service.dart';
 import '../data/adapter/chat_message_adapter.dart';
 import '../data/adapter/conversation_model.dart';
@@ -14,16 +15,23 @@ import '../data/repository/chat_repository.dart';
 class ChatController {
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
+  final InferenceNotificationService _inferenceNotificationService;
   final TargetPlatform? _platformOverride;
 
   ChatController({
     required this._repository,
     required this._mediaPickerService,
+    InferenceNotificationService? inferenceNotificationService,
     TargetPlatform? platform,
-  })  : _platformOverride = platform,
+  })  : _inferenceNotificationService =
+            inferenceNotificationService ??
+            const NoopInferenceNotificationService(),
+        _platformOverride = platform,
         maxTokens = signal<int>(
           AppConstants.defaultMaxTokensForPlatform(platform),
-        );
+        ) {
+    _inferenceNotificationService.setOnStopRequested(stopGeneration);
+  }
 
   // Signals de estado reativo
   final isModelLoaded = signal(false);
@@ -514,6 +522,16 @@ class ChatController {
     _syncMessagesToCurrentConversation();
 
     final promptToSend = responseStyle.value.applyToPrompt(effectiveText);
+    final notificationTitle = 'My Hero • ${currentModelSpec.displayName}';
+    var currentNotificationBody = enableThinking.value
+        ? 'Pensando na resposta...'
+        : 'Gerando resposta...';
+    var hasError = false;
+
+    await _inferenceNotificationService.start(
+      title: notificationTitle,
+      body: currentNotificationBody,
+    );
 
     try {
       final stream = _repository.sendMessage(
@@ -530,10 +548,28 @@ class ChatController {
 
         switch (chunk) {
           case ChatTextChunk(:final token):
+            if (currentNotificationBody != 'Gerando resposta...') {
+              currentNotificationBody = 'Gerando resposta...';
+              unawaited(
+                _inferenceNotificationService.update(
+                  title: notificationTitle,
+                  body: currentNotificationBody,
+                ),
+              );
+            }
             currentList[lastIndex] = lastMsg.copyWith(
               text: lastMsg.text + token,
             );
           case ChatThinkingChunk(:final content):
+            if (currentNotificationBody != 'Pensando na resposta...') {
+              currentNotificationBody = 'Pensando na resposta...';
+              unawaited(
+                _inferenceNotificationService.update(
+                  title: notificationTitle,
+                  body: currentNotificationBody,
+                ),
+              );
+            }
             currentList[lastIndex] = lastMsg.copyWith(
               thinkingText: (lastMsg.thinkingText ?? '') + content,
             );
@@ -541,6 +577,7 @@ class ChatController {
         chatHistory.value = currentList;
       }
     } on ContextLimitException {
+      hasError = true;
       if (!_stopGenerationFlag) {
         final currentList = List<ChatMessage>.from(chatHistory.value);
         final lastIndex = currentList.length - 1;
@@ -551,6 +588,7 @@ class ChatController {
         chatHistory.value = currentList;
       }
     } catch (e) {
+      hasError = true;
       if (!_stopGenerationFlag) {
         final currentList = List<ChatMessage>.from(chatHistory.value);
         final lastIndex = currentList.length - 1;
@@ -563,7 +601,29 @@ class ChatController {
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
+
+      final finalAnswer = chatHistory.value.isNotEmpty
+          ? chatHistory.value.last.text.trim()
+          : '';
+      final shouldNotifyCompleted =
+          !hasError && !_stopGenerationFlag && finalAnswer.isNotEmpty;
+
+      await _inferenceNotificationService.stop(
+        notifyIfBackgrounded: shouldNotifyCompleted,
+        completedTitle: shouldNotifyCompleted
+            ? 'Resposta pronta (${currentModelSpec.displayName})'
+            : null,
+        completedBody: shouldNotifyCompleted
+            ? _buildNotificationPreview(finalAnswer)
+            : null,
+      );
     }
+  }
+
+  String _buildNotificationPreview(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= 120) return normalized;
+    return '${normalized.substring(0, 117)}...';
   }
 
   Future<void> pickAndSendImage(
@@ -609,6 +669,7 @@ class ChatController {
     if (isGenerating.value) {
       _stopGenerationFlag = true;
       await _repository.stopGeneration();
+      await _inferenceNotificationService.stop();
       isGenerating.value = false;
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
@@ -623,6 +684,8 @@ class ChatController {
   }
 
   void dispose() {
+    _inferenceNotificationService.setOnStopRequested(null);
+    unawaited(_inferenceNotificationService.stop());
     unawaited(_repository.reset());
   }
 }

@@ -1,4 +1,5 @@
 import 'package:get_it/get_it.dart';
+import '../../shared/services/inference_notification_service.dart';
 import '../../shared/services/media_picker_service.dart';
 import '../../features/chat/data/datasource/chat_history_datasource.dart';
 import '../../features/chat/data/datasource/gemma_local_datasource.dart';
@@ -11,6 +12,9 @@ final getIt = GetIt.instance;
 Future<void> setupDependencies() async {
   // Core & Shared
   getIt.registerLazySingleton<MediaPickerService>(() => MediaPickerService());
+  getIt.registerLazySingleton<InferenceNotificationService>(
+    () => PlatformInferenceNotificationService(),
+  );
 
   // Features - Chat - Data
   getIt.registerLazySingleton<GemmaLocalDatasource>(
@@ -31,6 +35,7 @@ Future<void> setupDependencies() async {
     () => ChatController(
       repository: getIt<ChatRepository>(),
       mediaPickerService: getIt<MediaPickerService>(),
+      inferenceNotificationService: getIt<InferenceNotificationService>(),
     ),
   );
 }

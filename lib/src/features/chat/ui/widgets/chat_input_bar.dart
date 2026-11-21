@@ -79,8 +79,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
         final isModelLoaded = widget.controller.isModelLoaded.value;
         final isGenerating = widget.controller.isGenerating.value;
         final attachedImage = widget.controller.attachedImage.value;
+        final supportsImage = widget.controller.supportsImage;
 
         final canType = isModelLoaded && !isGenerating;
+        final canAttachImage = canType && supportsImage;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -176,11 +178,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ),
                 ),
                 IconButton(
-                  onPressed: canType ? _handleMediaButtonTap : null,
+                  onPressed: canAttachImage ? _handleMediaButtonTap : null,
                   color: Colors.teal,
-                  tooltip: widget.controller.supportsCamera
-                      ? 'Anexar imagem (Galeria ou Câmera)'
-                      : 'Anexar imagem',
+                  tooltip: !supportsImage
+                      ? 'Este modelo não suporta imagens'
+                      : (widget.controller.supportsCamera
+                          ? 'Anexar imagem (Galeria ou Câmera)'
+                          : 'Anexar imagem'),
                   icon: const Icon(Icons.add_photo_alternate_rounded),
                 ),
                 const SizedBox(width: 8),

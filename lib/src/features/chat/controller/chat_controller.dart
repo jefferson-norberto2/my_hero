@@ -39,9 +39,12 @@ class ChatController {
   final isGenerating = signal(false);
   final downloadProgress = signal(0.0);
   final loadingStatus = signal('');
+  final selectedModelId = signal<String>(AppConstants.defaultModelId);
+  final loadedModelId = signal<String?>(null);
+  final installedModelFiles = signal<Set<String>>({});
+  final deletingModelFileName = signal<String?>(null);
   final selectedBackend = signal<PreferredBackend>(PreferredBackend.cpu);
   final activeBackend = signal<PreferredBackend?>(null);
-  final is2BModel = signal<bool>(true);
   final Signal<int> maxTokens;
   final enableThinking = signal<bool>(false);
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
@@ -55,6 +58,8 @@ class ChatController {
 
   bool _stopGenerationFlag = false;
 
+  List<AiModelSpec> get availableModels => AppConstants.availableModels;
+
   List<PreferredBackend> get availableBackends =>
       AppConstants.availableBackendsForPlatform(_platformOverride);
 
@@ -66,8 +71,24 @@ class ChatController {
 
   bool get isCpu => selectedBackend.value == PreferredBackend.cpu;
 
-  GemmaModelSpec get currentModelSpec =>
-      AppConstants.modelSpec(is2B: is2BModel.value);
+  AiModelSpec get currentModelSpec =>
+      AppConstants.modelSpecById(selectedModelId.value);
+
+  AiModelSpec get activeLoadedModelSpec =>
+      AppConstants.modelSpecById(loadedModelId.value ?? selectedModelId.value);
+
+  bool get supportsImage =>
+      (isModelLoaded.value ? activeLoadedModelSpec : currentModelSpec)
+          .supportsImage;
+
+  bool get supportsThinking => currentModelSpec.supportsThinking;
+
+  bool isModelInstalled(AiModelSpec spec) =>
+      installedModelFiles.value.contains(spec.fileName);
+
+  int get installedModelsCount => availableModels
+      .where((spec) => installedModelFiles.value.contains(spec.fileName))
+      .length;
 
   int get minSupportedContextTokens => currentModelSpec.minContextTokens;
 
@@ -100,7 +121,19 @@ class ChatController {
   }
 
   Future<void> init() async {
-    await loadSavedConversations();
+    await Future.wait([
+      loadSavedConversations(),
+      refreshInstalledModels(),
+    ]);
+  }
+
+  Future<void> refreshInstalledModels() async {
+    try {
+      final installed = await _repository.getInstalledModelFileNames();
+      installedModelFiles.value = Set<String>.unmodifiable(installed);
+    } catch (_) {
+      // Falha silenciosa para não bloquear a inicialização caso o storage não esteja pronto
+    }
   }
 
   Future<void> loadSavedConversations() async {
@@ -120,14 +153,16 @@ class ChatController {
   /// Cria uma nova conversa com contexto 100% limpo e isolado
   Future<void> createNewConversation() async {
     final now = DateTime.now();
+    final spec = currentModelSpec;
+    final effectiveThinking = enableThinking.value && spec.supportsThinking;
     final newConv = Conversation(
       id: now.millisecondsSinceEpoch.toString(),
       title: 'Nova Conversa',
       messages: [],
-      is2B: is2BModel.value,
+      modelId: spec.id,
       preferredBackend: _normalizeBackendForPlatform(selectedBackend.value),
       maxTokens: maxTokens.value,
-      enableThinking: enableThinking.value,
+      enableThinking: effectiveThinking,
       responseStyle: responseStyle.value,
       createdAt: now,
       updatedAt: now,
@@ -137,14 +172,13 @@ class ChatController {
     currentConversationId.value = newConv.id;
     chatHistory.value = [];
 
-    // Se o modelo já estiver carregado, inicia uma nova sessão de chat no Gemma
-    // sem nenhum histórico, garantindo que o modelo não misture o contexto anterior!
     if (isModelLoaded.value) {
       try {
         await _repository.startNewChatSession(
+          modelId: loadedModelId.value ?? spec.id,
           contextMessages: null,
           responseStyle: responseStyle.value,
-          enableThinking: enableThinking.value,
+          enableThinking: effectiveThinking,
         );
       } catch (_) {}
     }
@@ -159,29 +193,34 @@ class ChatController {
     final conv = conversations.value.where((c) => c.id == id).firstOrNull;
     if (conv == null) return;
 
+    final spec = AppConstants.modelSpecById(conv.modelId);
     final normalizedBackend =
         _normalizeBackendForPlatform(conv.preferredBackend);
     final clampedTokens = AppConstants.clampMaxTokens(
       conv.maxTokens,
-      is2B: conv.is2B,
+      modelId: spec.id,
     );
+    final effectiveThinking = conv.enableThinking && spec.supportsThinking;
 
     currentConversationId.value = conv.id;
     chatHistory.value = List.from(conv.messages);
-    is2BModel.value = conv.is2B;
+    selectedModelId.value = spec.id;
     selectedBackend.value = normalizedBackend;
     maxTokens.value = clampedTokens;
-    enableThinking.value = conv.enableThinking;
+    enableThinking.value = effectiveThinking;
     responseStyle.value = conv.responseStyle;
 
-    // Se o modelo estiver carregado, reinicia a sessão de chat e sincroniza
-    // APENAS as mensagens da conversa selecionada com o estilo configurado
+    if (!spec.supportsImage) {
+      attachedImage.value = null;
+    }
+
     if (isModelLoaded.value) {
       try {
         await _repository.startNewChatSession(
+          modelId: loadedModelId.value ?? spec.id,
           contextMessages: conv.messages,
           responseStyle: conv.responseStyle,
-          enableThinking: conv.enableThinking,
+          enableThinking: effectiveThinking,
         );
       } catch (_) {}
     }
@@ -204,6 +243,31 @@ class ChatController {
     await _repository.saveConversations(conversations.value);
   }
 
+  void selectModel(String modelId) {
+    if (isLoading.value) return;
+    final spec = AppConstants.modelSpecById(modelId);
+    final clampedTokens = AppConstants.clampMaxTokens(
+      maxTokens.value,
+      modelId: spec.id,
+    );
+    final effectiveThinking = enableThinking.value && spec.supportsThinking;
+
+    selectedModelId.value = spec.id;
+    maxTokens.value = clampedTokens;
+    enableThinking.value = effectiveThinking;
+    if (!spec.supportsImage) {
+      attachedImage.value = null;
+    }
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.modelId = spec.id;
+      conv.maxTokens = clampedTokens;
+      conv.enableThinking = effectiveThinking;
+      _saveCurrentState();
+    }
+  }
+
   void selectBackend(PreferredBackend backend) {
     if (isLoading.value) return;
     final normalized = _normalizeBackendForPlatform(backend);
@@ -220,7 +284,7 @@ class ChatController {
     if (isLoading.value) return;
     final clamped = AppConstants.clampMaxTokens(
       value,
-      is2B: is2BModel.value,
+      modelId: selectedModelId.value,
     );
     maxTokens.value = clamped;
 
@@ -233,11 +297,12 @@ class ChatController {
 
   void setEnableThinking(bool enabled) {
     if (isLoading.value) return;
-    enableThinking.value = enabled;
+    final effective = enabled && currentModelSpec.supportsThinking;
+    enableThinking.value = effective;
 
     final conv = currentConversation;
     if (conv != null) {
-      conv.enableThinking = enabled;
+      conv.enableThinking = effective;
       _saveCurrentState();
     }
   }
@@ -248,8 +313,48 @@ class ChatController {
     _repository.cancelDownload();
   }
 
+  /// Exclui um modelo já baixado do armazenamento local para liberar espaço.
+  Future<void> uninstallModel(AiModelSpec spec) async {
+    if (isLoading.value ||
+        isGenerating.value ||
+        deletingModelFileName.value != null) {
+      return;
+    }
+
+    deletingModelFileName.value = spec.fileName;
+    errorMessage.value = null;
+
+    try {
+      final wasLoaded = isModelLoaded.value &&
+          (loadedModelId.value == spec.id ||
+              (loadedModelId.value == null &&
+                  selectedModelId.value == spec.id));
+
+      await _repository.uninstallModel(spec.fileName);
+
+      if (wasLoaded) {
+        isModelLoaded.value = false;
+        loadedModelId.value = null;
+        activeBackend.value = null;
+      }
+
+      await refreshInstalledModels();
+      // Garante remoção otimista caso o mock/repositório não retorne nova lista
+      if (installedModelFiles.value.contains(spec.fileName)) {
+        final next = Set<String>.from(installedModelFiles.value)
+          ..remove(spec.fileName);
+        installedModelFiles.value = Set<String>.unmodifiable(next);
+      }
+    } catch (e) {
+      errorMessage.value = 'Falha ao excluir ${spec.displayName}: $e';
+    } finally {
+      deletingModelFileName.value = null;
+    }
+  }
+
   Future<void> downloadAndLoadModel({
-    bool is2B = true,
+    String? modelId,
+    bool? is2B,
     List<ChatMessage>? contextMessages,
     ResponseStyle? responseStyle,
     PreferredBackend? preferredBackend,
@@ -261,22 +366,28 @@ class ChatController {
     loadingStatus.value = 'Verificando armazenamento local...';
     errorMessage.value = null;
 
-    final spec = AppConstants.modelSpec(is2B: is2B);
+    final resolvedModelId = modelId ??
+        (is2B != null
+            ? AppConstants.modelSpec(is2B: is2B).id
+            : selectedModelId.value);
+    final spec = AppConstants.modelSpecById(resolvedModelId);
     final targetBackend = _normalizeBackendForPlatform(
       preferredBackend ?? selectedBackend.value,
     );
     final targetMaxTokens = AppConstants.clampMaxTokens(
       maxTokens ?? this.maxTokens.value,
-      is2B: is2B,
+      modelId: spec.id,
     );
-    final targetThinking = enableThinking ?? this.enableThinking.value;
+    final targetThinking =
+        (enableThinking ?? this.enableThinking.value) && spec.supportsThinking;
     final targetStyle = responseStyle ?? this.responseStyle.value;
 
     try {
       final messagesToSync = contextMessages ?? chatHistory.value;
 
       await _repository.loadModel(
-        is2B: is2B,
+        modelId: spec.id,
+        is2B: spec.id == AppConstants.model2b.id,
         preferredBackend: targetBackend,
         maxTokens: targetMaxTokens,
         onProgress: (progress, status) {
@@ -290,18 +401,29 @@ class ChatController {
 
       final actualBackend = _repository.activeBackend ?? targetBackend;
 
-      is2BModel.value = is2B;
+      selectedModelId.value = spec.id;
+      loadedModelId.value = spec.id;
       selectedBackend.value = targetBackend;
       activeBackend.value = actualBackend;
       this.maxTokens.value = targetMaxTokens;
       this.enableThinking.value = targetThinking;
       this.responseStyle.value = targetStyle;
+      if (!spec.supportsImage) {
+        attachedImage.value = null;
+      }
       isModelLoaded.value = true;
       isLoading.value = false;
 
+      // Marca como instalado imediatamente e sincroniza com o armazenamento
+      installedModelFiles.value = Set<String>.unmodifiable({
+        ...installedModelFiles.value,
+        spec.fileName,
+      });
+      unawaited(refreshInstalledModels());
+
       final conv = currentConversation;
       if (conv != null) {
-        conv.is2B = is2B;
+        conv.modelId = spec.id;
         conv.preferredBackend = targetBackend;
         conv.maxTokens = targetMaxTokens;
         conv.enableThinking = targetThinking;
@@ -383,7 +505,8 @@ class ChatController {
 
   /// Altera as configurações da conversa (modelo, backend, maxTokens, thinking e estilo)
   Future<void> updateConversationSettings({
-    required bool is2B,
+    String? modelId,
+    bool? is2B,
     required PreferredBackend preferredBackend,
     required int maxTokens,
     required bool enableThinking,
@@ -391,53 +514,71 @@ class ChatController {
   }) async {
     if (isLoading.value || isGenerating.value) return;
 
+    final resolvedModelId = modelId ??
+        (is2B != null
+            ? AppConstants.modelSpec(is2B: is2B).id
+            : selectedModelId.value);
+    final spec = AppConstants.modelSpecById(resolvedModelId);
     final normalizedBackend = _normalizeBackendForPlatform(preferredBackend);
-    final clampedTokens = AppConstants.clampMaxTokens(maxTokens, is2B: is2B);
+    final clampedTokens = AppConstants.clampMaxTokens(
+      maxTokens,
+      modelId: spec.id,
+    );
+    final effectiveThinking = enableThinking && spec.supportsThinking;
 
-    final requiresModelReload = (is2B != is2BModel.value) ||
+    final currentLoaded = loadedModelId.value ?? selectedModelId.value;
+    final requiresModelReload = !isModelLoaded.value ||
+        (spec.id != currentLoaded) ||
         (normalizedBackend != selectedBackend.value) ||
         (clampedTokens != this.maxTokens.value);
     final requiresSessionRestart = (newResponseStyle != responseStyle.value) ||
-        (enableThinking != this.enableThinking.value);
+        (effectiveThinking != this.enableThinking.value);
 
     if (!requiresModelReload && !requiresSessionRestart) return;
 
     responseStyle.value = newResponseStyle;
+    selectedModelId.value = spec.id;
     selectedBackend.value = normalizedBackend;
     this.maxTokens.value = clampedTokens;
-    this.enableThinking.value = enableThinking;
+    this.enableThinking.value = effectiveThinking;
+    if (!spec.supportsImage) {
+      attachedImage.value = null;
+    }
 
     final conv = currentConversation;
     if (conv != null) {
-      conv.is2B = is2B;
+      conv.modelId = spec.id;
       conv.preferredBackend = normalizedBackend;
       conv.maxTokens = clampedTokens;
-      conv.enableThinking = enableThinking;
+      conv.enableThinking = effectiveThinking;
       conv.responseStyle = newResponseStyle;
       await _saveCurrentState();
     }
 
     if (requiresModelReload) {
       await downloadAndLoadModel(
-        is2B: is2B,
+        modelId: spec.id,
         preferredBackend: normalizedBackend,
         maxTokens: clampedTokens,
-        enableThinking: enableThinking,
+        enableThinking: effectiveThinking,
         contextMessages: chatHistory.value,
         responseStyle: newResponseStyle,
       );
     } else if (requiresSessionRestart && isModelLoaded.value) {
       await _repository.startNewChatSession(
+        modelId: spec.id,
         contextMessages: chatHistory.value,
         responseStyle: newResponseStyle,
-        enableThinking: enableThinking,
+        enableThinking: effectiveThinking,
       );
-      final thinkingStatus = enableThinking ? 'ativado' : 'desativado';
+      final thinkingNote = spec.supportsThinking
+          ? ' • Thinking ${effectiveThinking ? 'ativado' : 'desativado'}'
+          : '';
       chatHistory.value = [
         ...chatHistory.value,
         ChatMessage(
           text:
-              'Sistema: Configurações atualizadas (Estilo: "${newResponseStyle.label}" • Thinking $thinkingStatus).',
+              'Sistema: Configurações atualizadas (Estilo: "${newResponseStyle.label}"$thinkingNote).',
           isUser: false,
         ),
       ];
@@ -448,10 +589,12 @@ class ChatController {
 
   /// Mantido para compatibilidade
   Future<void> switchModelWithContext({
-    required bool is2B,
+    String? modelId,
+    bool? is2B,
     required PreferredBackend preferredBackend,
   }) async {
     await updateConversationSettings(
+      modelId: modelId,
       is2B: is2B,
       preferredBackend: preferredBackend,
       maxTokens: maxTokens.value,
@@ -461,6 +604,7 @@ class ChatController {
   }
 
   void setAttachedImage(Uint8List? bytes) {
+    if (bytes != null && !supportsImage) return;
     attachedImage.value = bytes;
   }
 
@@ -469,6 +613,7 @@ class ChatController {
   }
 
   Future<void> pickImage({bool fromCamera = false}) async {
+    if (!supportsImage) return;
     try {
       final useCamera = fromCamera && supportsCamera;
       final imageBytes = useCamera
@@ -490,7 +635,10 @@ class ChatController {
   }
 
   Future<void> sendMessage(String text, [Uint8List? imageBytes]) async {
-    final image = imageBytes ?? attachedImage.value;
+    final activeSpec = activeLoadedModelSpec;
+    final image = activeSpec.supportsImage
+        ? (imageBytes ?? attachedImage.value)
+        : null;
     final trimmedText = text.trim();
     final effectiveText = trimmedText.isEmpty && image != null
         ? 'Analise esta imagem'
@@ -522,8 +670,9 @@ class ChatController {
     _syncMessagesToCurrentConversation();
 
     final promptToSend = responseStyle.value.applyToPrompt(effectiveText);
-    final notificationTitle = 'My Hero • ${currentModelSpec.displayName}';
-    var currentNotificationBody = enableThinking.value
+    final notificationTitle = 'My Hero • ${activeSpec.displayName}';
+    final startsThinking = enableThinking.value && activeSpec.supportsThinking;
+    var currentNotificationBody = startsThinking
         ? 'Pensando na resposta...'
         : 'Gerando resposta...';
     var hasError = false;
@@ -611,7 +760,7 @@ class ChatController {
       await _inferenceNotificationService.stop(
         notifyIfBackgrounded: shouldNotifyCompleted,
         completedTitle: shouldNotifyCompleted
-            ? 'Resposta pronta (${currentModelSpec.displayName})'
+            ? 'Resposta pronta (${activeSpec.displayName})'
             : null,
         completedBody: shouldNotifyCompleted
             ? _buildNotificationPreview(finalAnswer)
@@ -630,6 +779,7 @@ class ChatController {
     String currentText, {
     bool fromCamera = false,
   }) async {
+    if (!supportsImage) return;
     try {
       final useCamera = fromCamera && supportsCamera;
       final imageBytes = useCamera
@@ -680,6 +830,7 @@ class ChatController {
     if (isGenerating.value) return;
     await _repository.reset();
     isModelLoaded.value = false;
+    loadedModelId.value = null;
     activeBackend.value = null;
   }
 

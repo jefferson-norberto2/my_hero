@@ -376,4 +376,69 @@ void main() {
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
     });
   });
+
+  group('ChatRepositoryImpl - open catalog & storage management', () {
+    test('should load text-only catalog model with supportImage=false and strip image bytes during replay', () async {
+      final qwenSpec = AppConstants.modelSpecById('qwen3-0.6b');
+      final fakeBytes = Uint8List.fromList([1, 2, 3]);
+
+      when(() => mockGemmaDatasource.isModelInstalled(qwenSpec.fileName))
+          .thenAnswer((_) async => false);
+      when(
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: qwenSpec.catalogVariant,
+          onProgress: any(named: 'onProgress'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.createActiveModel(
+          preferredBackend: PreferredBackend.cpu,
+          maxTokens: 4096,
+          supportImage: false,
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => mockGemmaDatasource.openChat(
+          modelType: ModelType.qwen3,
+          systemInstruction: any(named: 'systemInstruction'),
+          supportImage: false,
+          enableThinking: true,
+        ),
+      ).thenAnswer((_) async {});
+      when(() => mockGemmaDatasource.addQueryChunk(any()))
+          .thenAnswer((_) async {});
+
+      await repository.loadModel(
+        modelId: qwenSpec.id,
+        preferredBackend: PreferredBackend.cpu,
+        maxTokens: 4096,
+        enableThinking: true,
+        contextMessages: [
+          ChatMessage(text: 'Olhe esta foto', isUser: true, imageBytes: fakeBytes),
+        ],
+        onProgress: (_, _) {},
+      );
+
+      final captured = verify(
+        () => mockGemmaDatasource.addQueryChunk(captureAny()),
+      ).captured;
+      expect((captured.single as Message).imageBytes, isNull);
+    });
+
+    test('getInstalledModelFileNames and uninstallModel should delegate to datasource', () async {
+      when(() => mockGemmaDatasource.listInstalledModels()).thenAnswer(
+        (_) async => [AppConstants.model2bFileName, 'Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm'],
+      );
+      when(() => mockGemmaDatasource.uninstallModel(AppConstants.model2bFileName))
+          .thenAnswer((_) async {});
+
+      final installed = await repository.getInstalledModelFileNames();
+      expect(installed, contains(AppConstants.model2bFileName));
+      expect(installed.length, 2);
+
+      await repository.uninstallModel(AppConstants.model2bFileName);
+      verify(() => mockGemmaDatasource.uninstallModel(AppConstants.model2bFileName))
+          .called(1);
+    });
+  });
 }

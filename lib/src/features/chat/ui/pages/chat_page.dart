@@ -53,9 +53,10 @@ class _ChatPageState extends State<ChatPage> {
           builder: (context) {
             final conv = _controller.currentConversation;
             final isLoaded = _controller.isModelLoaded.value;
-            final is2B = _controller.is2BModel.value;
+            final activeSpec = _controller.activeLoadedModelSpec;
             final maxTokens = _controller.maxTokens.value;
-            final thinking = _controller.enableThinking.value;
+            final thinking =
+                _controller.enableThinking.value && activeSpec.supportsThinking;
             final backendLabel = _controller.backendDisplaySummary;
             final styleLabel = _controller.responseStyle.value.label;
 
@@ -73,7 +74,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 Text(
                   isLoaded
-                      ? '${is2B ? "Gemma 2B" : "Gemma 4B"} ($backendLabel) • ${AppConstants.formatTokenCount(maxTokens)}${thinking ? " • Thinking" : ""} • $styleLabel'
+                      ? '${activeSpec.displayName} ($backendLabel) • ${AppConstants.formatTokenCount(maxTokens)}${thinking ? " • Thinking" : ""} • $styleLabel'
                       : 'Nenhum modelo carregado',
                   style: const TextStyle(fontSize: 11),
                   overflow: TextOverflow.ellipsis,
@@ -123,13 +124,17 @@ class _ChatPageState extends State<ChatPage> {
             SignalBuilder(
               builder: (context) {
                 final isLoaded = _controller.isModelLoaded.value;
+                final hasMessages = _controller.chatHistory.value.isNotEmpty;
                 if (isLoaded) return const SizedBox.shrink();
+                final maxHeight = hasMessages
+                    ? MediaQuery.sizeOf(context).height * 0.62
+                    : MediaQuery.sizeOf(context).height * 0.72;
                 return ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(context).height * 0.58,
-                  ),
+                  constraints: BoxConstraints(maxHeight: maxHeight),
                   child: SingleChildScrollView(
-                    child: ModelSelectorWidget(controller: _controller),
+                    child: Center(
+                      child: ModelSelectorWidget(controller: _controller),
+                    ),
                   ),
                 );
               },

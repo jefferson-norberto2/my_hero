@@ -13,6 +13,10 @@ abstract class GemmaLocalDatasource {
 
   Future<bool> isModelInstalled(String modelFileName);
 
+  Future<List<String>> listInstalledModels();
+
+  Future<void> uninstallModel(String modelFileName);
+
   Future<void> installModelFromCatalog({
     required InferenceVariant variant,
     required void Function(int percent) onProgress,
@@ -70,6 +74,22 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   @override
   Future<bool> isModelInstalled(String modelFileName) async {
     return FlutterEdgeAi.isModelInstalled(modelFileName);
+  }
+
+  @override
+  Future<List<String>> listInstalledModels() async {
+    return FlutterEdgeAi.listInstalledModels();
+  }
+
+  @override
+  Future<void> uninstallModel(String modelFileName) async {
+    final activeSpec = FlutterEdgeAi.activeModelSpec;
+    final isCurrentlyActive = activeSpec != null &&
+        activeSpec.files.any((f) => f.filename == modelFileName);
+    if (isCurrentlyActive) {
+      await close();
+    }
+    await FlutterEdgeAi.uninstallModel(modelFileName);
   }
 
   @override

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
@@ -24,6 +25,9 @@ void main() {
     mockRepository = MockChatRepository();
     mockMediaPicker = MockMediaPickerService();
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
+    when(() => mockRepository.getInstalledModelFileNames())
+        .thenAnswer((_) async => <String>{});
+    when(() => mockRepository.uninstallModel(any())).thenAnswer((_) async {});
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenAnswer((_) async {});
     when(() => mockRepository.activeBackend).thenReturn(PreferredBackend.gpu);
@@ -37,9 +41,11 @@ void main() {
         platform: TargetPlatform.linux,
       );
       controller.isModelLoaded.value = true;
+      controller.loadedModelId.value = AppConstants.model2b.id;
 
       when(
         () => mockRepository.startNewChatSession(
+          modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
           enableThinking: true,
@@ -67,6 +73,8 @@ void main() {
       expect(find.text('NPU'), findsNothing);
       expect(find.text('32K'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Modo Pensamento (Thinking)'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Modo Pensamento (Thinking)'));
       await tester.pumpAndSettle();
 
@@ -76,6 +84,7 @@ void main() {
       expect(controller.enableThinking.value, isTrue);
       verify(
         () => mockRepository.startNewChatSession(
+          modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
           enableThinking: true,
@@ -90,9 +99,11 @@ void main() {
         platform: TargetPlatform.windows,
       );
       controller.isModelLoaded.value = true;
+      controller.loadedModelId.value = AppConstants.model2b.id;
 
       when(
         () => mockRepository.loadModel(
+          modelId: AppConstants.model2b.id,
           is2B: true,
           preferredBackend: PreferredBackend.npu,
           maxTokens: 16384,
@@ -121,9 +132,13 @@ void main() {
 
       expect(find.text('NPU'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('NPU'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('NPU'));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('16K'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('16K'));
       await tester.pumpAndSettle();
 
@@ -134,6 +149,7 @@ void main() {
       expect(controller.maxTokens.value, 16384);
       verify(
         () => mockRepository.loadModel(
+          modelId: AppConstants.model2b.id,
           is2B: true,
           preferredBackend: PreferredBackend.npu,
           maxTokens: 16384,

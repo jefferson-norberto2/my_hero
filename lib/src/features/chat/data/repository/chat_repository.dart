@@ -7,25 +7,31 @@ import '../adapter/response_style.dart';
 abstract class ChatRepository {
   PreferredBackend? get activeBackend;
 
-  Future<bool> isModelInstalled({required bool is2B});
+  Future<bool> isModelInstalled({String? modelId, bool is2B = true});
+
+  Future<Set<String>> getInstalledModelFileNames();
+
+  Future<void> uninstallModel(String modelFileName);
 
   Future<void> loadModel({
-    required bool is2B,
+    String? modelId,
+    bool is2B = true,
     required PreferredBackend preferredBackend,
     required int maxTokens,
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
+    bool? supportImage,
     bool enableThinking = false,
   });
 
   void cancelDownload();
 
   Future<void> startNewChatSession({
+    String? modelId,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
+    bool? supportImage,
     bool enableThinking = false,
   });
 

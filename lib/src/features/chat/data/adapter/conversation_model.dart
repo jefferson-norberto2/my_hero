@@ -7,7 +7,7 @@ class Conversation {
   final String id;
   String title;
   List<ChatMessage> messages;
-  bool is2B;
+  String modelId;
   PreferredBackend preferredBackend;
   int maxTokens;
   bool enableThinking;
@@ -19,7 +19,8 @@ class Conversation {
     required this.id,
     required this.title,
     required this.messages,
-    this.is2B = true,
+    String? modelId,
+    bool? is2B,
     PreferredBackend? preferredBackend,
     bool? useCpu,
     int? maxTokens,
@@ -27,12 +28,28 @@ class Conversation {
     this.responseStyle = ResponseStyle.simple,
     required this.createdAt,
     required this.updatedAt,
-  })  : preferredBackend = preferredBackend ??
+  })  : modelId = _resolveModelId(modelId: modelId, is2B: is2B),
+        preferredBackend = preferredBackend ??
             ((useCpu ?? true) ? PreferredBackend.cpu : PreferredBackend.gpu),
         maxTokens = AppConstants.clampMaxTokens(
           maxTokens ?? AppConstants.defaultMaxTokensForPlatform(),
-          is2B: is2B,
+          modelId: _resolveModelId(modelId: modelId, is2B: is2B),
         );
+
+  static String _resolveModelId({String? modelId, bool? is2B}) {
+    if (modelId != null && modelId.isNotEmpty) {
+      return AppConstants.modelSpecById(modelId).id;
+    }
+    return AppConstants.modelSpec(is2B: is2B ?? true).id;
+  }
+
+  bool get is2B => modelId == AppConstants.model2b.id;
+
+  set is2B(bool value) {
+    modelId = AppConstants.modelSpec(is2B: value).id;
+  }
+
+  AiModelSpec get modelSpec => AppConstants.modelSpecById(modelId);
 
   bool get useCpu => preferredBackend == PreferredBackend.cpu;
 
@@ -40,6 +57,7 @@ class Conversation {
     String? id,
     String? title,
     List<ChatMessage>? messages,
+    String? modelId,
     bool? is2B,
     PreferredBackend? preferredBackend,
     int? maxTokens,
@@ -48,11 +66,13 @@ class Conversation {
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
+    final resolvedModelId = modelId ??
+        (is2B != null ? AppConstants.modelSpec(is2B: is2B).id : this.modelId);
     return Conversation(
       id: id ?? this.id,
       title: title ?? this.title,
       messages: messages ?? List.from(this.messages),
-      is2B: is2B ?? this.is2B,
+      modelId: resolvedModelId,
       preferredBackend: preferredBackend ?? this.preferredBackend,
       maxTokens: maxTokens ?? this.maxTokens,
       enableThinking: enableThinking ?? this.enableThinking,
@@ -67,6 +87,7 @@ class Conversation {
       'id': id,
       'title': title,
       'messages': messages.map((m) => m.toJson()).toList(),
+      'modelId': modelId,
       'is2B': is2B,
       'preferredBackend': preferredBackend.name,
       'useCpu': useCpu,
@@ -90,7 +111,8 @@ class Conversation {
   }
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
-    final is2B = json['is2B'] as bool? ?? true;
+    final rawModelId = json['modelId'] as String?;
+    final legacyIs2B = json['is2B'] as bool?;
     final rawMaxTokens = json['maxTokens'] as int?;
     return Conversation(
       id: json['id'] as String,
@@ -99,7 +121,8 @@ class Conversation {
               ?.map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
               .toList() ??
           [],
-      is2B: is2B,
+      modelId: rawModelId,
+      is2B: legacyIs2B,
       preferredBackend: _parseBackend(json),
       maxTokens: rawMaxTokens,
       enableThinking: json['enableThinking'] as bool? ?? false,

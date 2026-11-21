@@ -33,6 +33,9 @@ void main() {
     mockMediaPicker = MockMediaPickerService();
 
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
+    when(() => mockRepository.getInstalledModelFileNames())
+        .thenAnswer((_) async => <String>{});
+    when(() => mockRepository.uninstallModel(any())).thenAnswer((_) async {});
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenAnswer((_) async {});
     when(() => mockRepository.stopGeneration()).thenAnswer((_) async {});
@@ -97,6 +100,7 @@ void main() {
     test('downloadAndLoadModel should report fallback activeBackend when runtime differs from requested', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: AppConstants.model2b.id,
           is2B: true,
           preferredBackend: PreferredBackend.npu,
           maxTokens: 4096,
@@ -111,7 +115,7 @@ void main() {
       controller.selectBackend(PreferredBackend.npu);
       controller.setEnableThinking(true);
 
-      await controller.downloadAndLoadModel(is2B: true);
+      await controller.downloadAndLoadModel(modelId: AppConstants.model2b.id);
 
       expect(controller.isModelLoaded.value, isTrue);
       expect(controller.selectedBackend.value, PreferredBackend.npu);
@@ -123,6 +127,7 @@ void main() {
       controller.isModelLoaded.value = true;
       when(
         () => mockRepository.startNewChatSession(
+          modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
           enableThinking: true,
@@ -130,7 +135,7 @@ void main() {
       ).thenAnswer((_) async {});
 
       await controller.updateConversationSettings(
-        is2B: controller.is2BModel.value,
+        modelId: controller.selectedModelId.value,
         preferredBackend: controller.selectedBackend.value,
         maxTokens: controller.maxTokens.value,
         enableThinking: true,
@@ -140,6 +145,7 @@ void main() {
       expect(controller.enableThinking.value, isTrue);
       verify(
         () => mockRepository.startNewChatSession(
+          modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
           enableThinking: true,
@@ -147,6 +153,7 @@ void main() {
       ).called(1);
       verifyNever(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -323,6 +330,7 @@ void main() {
     test('downloadAndLoadModel should report incomplete bundle on LiteRtLmBundleException', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -350,6 +358,7 @@ void main() {
     test('downloadAndLoadModel should report validation mismatch on ModelValidationException', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -372,6 +381,7 @@ void main() {
     test('downloadAndLoadModel should report missing active model on NoActiveModelError', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -394,6 +404,7 @@ void main() {
     test('downloadAndLoadModel should report failing backend on BackendInitException', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -424,6 +435,7 @@ void main() {
     test('downloadAndLoadModel should treat DownloadException(CanceledError) from Android notification cancel as user cancel', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -443,6 +455,7 @@ void main() {
     test('downloadAndLoadModel should surface localized network error on DownloadException(NetworkError)', () async {
       when(
         () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
           is2B: any(named: 'is2B'),
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
@@ -596,6 +609,65 @@ void main() {
           completedBody: null,
         ),
       ).called(1);
+    });
+  });
+
+  group('ChatController - Open Model Catalog & Storage Management', () {
+    test('availableModels should list only open (non-gated) native models with Gemma 4 featured first', () {
+      final models = controller.availableModels;
+
+      expect(models.length, greaterThanOrEqualTo(10));
+      expect(models.first.id, AppConstants.model2b.id);
+      expect(models[1].id, AppConstants.model4b.id);
+      for (final spec in models) {
+        expect(spec.catalogVariant.file?.gated, isFalse);
+        expect(spec.catalogVariant.npuTarget, isNull);
+      }
+    });
+
+    test('selectModel should clamp maxTokens, disable thinking and clear image when unsupported', () {
+      controller.setMaxTokens(32768);
+      controller.setEnableThinking(true);
+      controller.setAttachedImage(Uint8List.fromList([1, 2, 3]));
+
+      final qwen25 = AppConstants.modelSpecById('qwen2.5-1.5b-instruct');
+      controller.selectModel(qwen25.id);
+
+      expect(controller.selectedModelId.value, qwen25.id);
+      expect(controller.maxTokens.value, 4096);
+      expect(controller.enableThinking.value, isFalse);
+      expect(controller.attachedImage.value, isNull);
+      expect(controller.supportsImage, isFalse);
+      expect(controller.supportsThinking, isFalse);
+    });
+
+    test('refreshInstalledModels and uninstallModel should track downloaded models and unload active one', () async {
+      final gemma2b = AppConstants.model2b;
+      final qwen3 = AppConstants.modelSpecById('qwen3-0.6b');
+
+      var installed = {gemma2b.fileName, qwen3.fileName};
+      when(() => mockRepository.getInstalledModelFileNames())
+          .thenAnswer((_) async => Set<String>.from(installed));
+      when(() => mockRepository.uninstallModel(gemma2b.fileName))
+          .thenAnswer((_) async {
+        installed = {qwen3.fileName};
+      });
+
+      await controller.refreshInstalledModels();
+      expect(controller.isModelInstalled(gemma2b), isTrue);
+      expect(controller.isModelInstalled(qwen3), isTrue);
+      expect(controller.installedModelsCount, 2);
+
+      controller.isModelLoaded.value = true;
+      controller.loadedModelId.value = gemma2b.id;
+
+      await controller.uninstallModel(gemma2b);
+
+      verify(() => mockRepository.uninstallModel(gemma2b.fileName)).called(1);
+      expect(controller.isModelInstalled(gemma2b), isFalse);
+      expect(controller.isModelInstalled(qwen3), isTrue);
+      expect(controller.isModelLoaded.value, isFalse);
+      expect(controller.loadedModelId.value, isNull);
     });
   });
 }

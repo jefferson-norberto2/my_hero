@@ -20,25 +20,48 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   PreferredBackend? get activeBackend => _gemmaDatasource.activeBackend;
 
+  AiModelSpec _resolveSpec({String? modelId, bool is2B = true}) {
+    return modelId != null
+        ? AppConstants.modelSpecById(modelId)
+        : AppConstants.modelSpec(is2B: is2B);
+  }
+
   @override
-  Future<bool> isModelInstalled({required bool is2B}) {
-    final spec = AppConstants.modelSpec(is2B: is2B);
+  Future<bool> isModelInstalled({String? modelId, bool is2B = true}) {
+    final spec = _resolveSpec(modelId: modelId, is2B: is2B);
     return _gemmaDatasource.isModelInstalled(spec.fileName);
   }
 
   @override
+  Future<Set<String>> getInstalledModelFileNames() async {
+    final installed = await _gemmaDatasource.listInstalledModels();
+    return installed.toSet();
+  }
+
+  @override
+  Future<void> uninstallModel(String modelFileName) {
+    return _gemmaDatasource.uninstallModel(modelFileName);
+  }
+
+  @override
   Future<void> loadModel({
-    required bool is2B,
+    String? modelId,
+    bool is2B = true,
     required PreferredBackend preferredBackend,
     required int maxTokens,
     required void Function(double progress, String status) onProgress,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
+    bool? supportImage,
     bool enableThinking = false,
   }) async {
-    final spec = AppConstants.modelSpec(is2B: is2B);
-    final safeMaxTokens = AppConstants.clampMaxTokens(maxTokens, is2B: is2B);
+    final spec = _resolveSpec(modelId: modelId, is2B: is2B);
+    final safeMaxTokens = AppConstants.clampMaxTokens(
+      maxTokens,
+      modelId: spec.id,
+    );
+    final effectiveSupportImage = (supportImage ?? true) && spec.supportsImage;
+    final effectiveThinking = enableThinking && spec.supportsThinking;
 
     onProgress(0.0, 'Verificando armazenamento local...');
     final alreadyInstalled =
@@ -47,7 +70,10 @@ class ChatRepositoryImpl implements ChatRepository {
     if (alreadyInstalled) {
       onProgress(1.0, 'Modelo ${spec.displayName} encontrado localmente.');
     } else {
-      onProgress(0.0, 'Iniciando download de ${spec.displayName}...');
+      onProgress(
+        0.0,
+        'Iniciando download de ${spec.displayName} (${spec.formattedSize})...',
+      );
     }
 
     await _gemmaDatasource.installModelFromCatalog(
@@ -68,17 +94,20 @@ class ChatRepositoryImpl implements ChatRepository {
     await _gemmaDatasource.createActiveModel(
       preferredBackend: preferredBackend,
       maxTokens: safeMaxTokens,
-      supportImage: supportImage,
+      supportImage: effectiveSupportImage,
     );
     await _gemmaDatasource.openChat(
       modelType: spec.modelType,
-      supportImage: supportImage,
-      enableThinking: enableThinking,
+      supportImage: effectiveSupportImage,
+      enableThinking: effectiveThinking,
       systemInstruction: responseStyle.systemInstruction,
     );
 
     // Sincroniza o contexto recente exclusivo desta conversa com o novo modelo carregado
-    await _replayContextMessages(contextMessages);
+    await _replayContextMessages(
+      contextMessages,
+      includeImages: effectiveSupportImage,
+    );
   }
 
   @override
@@ -88,24 +117,35 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<void> startNewChatSession({
+    String? modelId,
     List<ChatMessage>? contextMessages,
     ResponseStyle responseStyle = ResponseStyle.simple,
-    bool supportImage = true,
+    bool? supportImage,
     bool enableThinking = false,
   }) async {
+    final spec = _resolveSpec(modelId: modelId);
+    final effectiveSupportImage = (supportImage ?? true) && spec.supportsImage;
+    final effectiveThinking = enableThinking && spec.supportsThinking;
+
     // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
     await _gemmaDatasource.openChat(
-      modelType: ModelType.gemma4,
-      supportImage: supportImage,
-      enableThinking: enableThinking,
+      modelType: spec.modelType,
+      supportImage: effectiveSupportImage,
+      enableThinking: effectiveThinking,
       systemInstruction: responseStyle.systemInstruction,
     );
 
     // Sincroniza apenas as mensagens exclusivas da conversa atual
-    await _replayContextMessages(contextMessages);
+    await _replayContextMessages(
+      contextMessages,
+      includeImages: effectiveSupportImage,
+    );
   }
 
-  Future<void> _replayContextMessages(List<ChatMessage>? contextMessages) async {
+  Future<void> _replayContextMessages(
+    List<ChatMessage>? contextMessages, {
+    bool includeImages = true,
+  }) async {
     if (contextMessages == null || contextMessages.isEmpty) return;
 
     final relevantMessages = contextMessages
@@ -117,8 +157,11 @@ class ChatRepositoryImpl implements ChatRepository {
         : relevantMessages;
 
     for (final msg in recentContext) {
+      final replayMsg = includeImages
+          ? msg
+          : ChatMessage(text: msg.text, isUser: msg.isUser);
       await _gemmaDatasource.addQueryChunk(
-        ChatMessageAdapter.toGemmaMessage(msg),
+        ChatMessageAdapter.toGemmaMessage(replayMsg),
       );
     }
   }

@@ -1,5 +1,6 @@
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
@@ -85,6 +86,28 @@ void main() {
       expect(updated.maxTokens, 8192);
       expect(updated.enableThinking, isTrue);
       expect(updated.responseStyle, ResponseStyle.brief);
+    });
+
+    test('should persist arbitrary catalog modelId and clamp maxTokens to that model', () {
+      final now = DateTime.now();
+      final qwenSpec = AppConstants.modelSpecById('qwen2.5-1.5b-instruct');
+      final conv = Conversation(
+        id: 'qwen-1',
+        title: 'Chat Qwen',
+        messages: [],
+        modelId: qwenSpec.id,
+        maxTokens: 32768, // Deve ser limitado ao teto de 4096 do q8-ekv4096
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      expect(conv.modelId, qwenSpec.id);
+      expect(conv.maxTokens, 4096);
+
+      final restored = Conversation.fromJson(conv.toJson());
+      expect(restored.modelId, qwenSpec.id);
+      expect(restored.modelSpec.displayName, qwenSpec.displayName);
+      expect(restored.maxTokens, 4096);
     });
   });
 }

@@ -1,6 +1,6 @@
 # My Hero 🦸‍♂️
 
-Aplicativo Flutter multiplataforma (**Android**, **Linux** e **Windows**) para interação e execução local de modelos de Inteligência Artificial **Google Gemma 4** (E2B e E4B) utilizando `flutter_edge_ai` (`2.7.1`) + `flutter_edge_ai_litertlm` (`1.21.0`) + `litertlm_dart` (`0.19.1+1`) via **Dart FFI + Native Assets**, com suporte a streaming, **Thinking Mode**, seleção de **janela de contexto (`maxTokens`)**, escolha de backend (**CPU / GPU / NPU**) e envio de imagens.
+Aplicativo Flutter multiplataforma (**Android**, **Linux** e **Windows**) para interação e execução local de modelos de Inteligência Artificial abertos do catálogo **LiteRT-LM** (incluindo **Google Gemma 4 E2B/E4B**, **Qwen3**, **DeepSeek R1**, **Phi-4 Mini**, **SmolLM3**, **SmolVLM2**, **LFM2.5**, entre outros) utilizando `flutter_edge_ai` (`2.7.1`) + `flutter_edge_ai_litertlm` (`1.21.0`) + `litertlm_dart` (`0.19.1+1`) via **Dart FFI + Native Assets**, com download sob demanda, gestão de modelos baixados, streaming, **Thinking Mode**, seleção de **janela de contexto (`maxTokens`)**, escolha de backend (**CPU / GPU / NPU**) e envio de imagens.
 
 ---
 
@@ -64,8 +64,9 @@ lib/
                     ├── chat_drawer.dart                       # Menu lateral com histórico e + Nova Conversa
                     ├── chat_input_bar.dart                    # Barra inferior (texto, anexar imagem adaptada por plataforma, enviar/parar)
                     ├── chat_message_list.dart                 # Lista de mensagens com rolagem automática
-                    ├── model_selector_widget.dart             # Seleção CPU/GPU/NPU, maxTokens (1K–32K), Thinking e download nativo
-                    └── model_switch_dialog.dart               # Modal para troca dinâmica de modelo/backend/contexto/thinking
+                    ├── model_catalog_list.dart                # Lista dinâmica do catálogo aberto com filtro Baixados, selos e exclusão
+                    ├── model_selector_widget.dart             # Seleção do catálogo, CPU/GPU/NPU, maxTokens, Thinking e download nativo
+                    └── model_switch_dialog.dart               # Modal para troca dinâmica de modelo do catálogo/backend/contexto/thinking
 ```
 
 ---
@@ -82,7 +83,8 @@ Os estados das features utilizam **Signals** para reatividade granular (`SignalB
 
 ### 3. Engine Modular LiteRT-LM (`flutter_edge_ai 2.7.1` + `flutter_edge_ai_litertlm 1.21.0`)
 - **Dart FFI + Native Assets (`litertlm_dart 0.19.1+1`):** todas as plataformas nativas (Android, Linux e Windows) executam o **LiteRT-LM `v0.19.1` (`native-v0.19.1-c`, C API 1.0)** diretamente via FFI, sem JRE nem servidor gRPC.
-- **Instalador Nativo via Catálogo Oficial:** downloads gerenciados por `FlutterEdgeAi.installModelFromCatalog(LiteRtLmModels.gemma4E2bIt.generic)` / `gemma4E4bIt.generic` com revisões pinadas no Hugging Face, validação automática de integridade de tamanho (`ModelValidationException`), cancelamento via `CancelToken`, **Foreground Service com notificação persistente de progresso no Android** (`POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_DATA_SYNC`, `SystemForegroundService` e botões/canal em português) e armazenamento seguro fora de `Documents`/OneDrive no Windows (`%LOCALAPPDATA%\flutter_gemma`) e Linux (`~/.local/share/<app>/flutter_gemma`).
+- **Catálogo Aberto e Gestão de Armazenamento:** lista dinamicamente todos os modelos abertos (sem necessidade de token no Hugging Face) de `LiteRtLmModels.all`, exibindo tamanho, capacidades (**Imagem**, **Thinking**), selo **Baixado**, aba de filtro **Todos / Baixados** e botão de exclusão (`FlutterEdgeAi.uninstallModel`) com confirmação para liberar espaço.
+- **Instalador Nativo via Catálogo Oficial:** downloads sob demanda gerenciados por `FlutterEdgeAi.installModelFromCatalog(...)` com revisões pinadas no Hugging Face, validação automática de integridade de tamanho (`ModelValidationException`), cancelamento via `CancelToken`, **Foreground Service com notificação persistente de progresso no Android** (`POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_DATA_SYNC`, `SystemForegroundService` e botões/canal em português) e armazenamento seguro fora de `Documents`/OneDrive no Windows (`%LOCALAPPDATA%\flutter_gemma`) e Linux (`~/.local/share/<app>/flutter_gemma`).
 - **Sessões Independentes (`openChat`) e Sampling Nativo:** utiliza `InferenceModel.openChat(...)` com rewind in-place ao parar geração (preservando imagens), defaults de sampling embarcados no `.litertlm` (Gemma 4: `temperature: 1.0, topK: 64, topP: 0.95`) e tratamento dedicado de `ContextLimitException` e `LiteRtLmBundleException`.
 - **Backends por Plataforma + Fallback Transparente:**
   - **Linux (`x86_64` / `arm64`):** `CPU` e `GPU` (Vulkan; FP32 automático acima de 2.048 tokens no Gemma 4).

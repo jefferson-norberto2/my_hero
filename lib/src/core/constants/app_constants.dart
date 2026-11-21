@@ -3,27 +3,32 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 
-class GemmaModelSpec {
+class AiModelSpec {
+  final String id;
   final String displayName;
-  final String shortLabel;
+  final String family;
   final InferenceVariant catalogVariant;
   final int minContextTokens;
   final int maxContextTokens;
 
-  const GemmaModelSpec({
+  const AiModelSpec({
+    required this.id,
     required this.displayName,
-    required this.shortLabel,
+    required this.family,
     required this.catalogVariant,
     required this.minContextTokens,
     required this.maxContextTokens,
   });
 
   String get fileName =>
-      catalogVariant.file?.installFilename ?? '${catalogVariant.modelId}.litertlm';
+      catalogVariant.file?.installFilename ??
+      '${catalogVariant.modelId}.litertlm';
 
   String get downloadUrl => catalogVariant.file?.url ?? '';
 
-  int? get expectedSizeBytes => catalogVariant.file?.sizeBytes;
+  int get sizeBytes => catalogVariant.file?.sizeBytes ?? 0;
+
+  String get formattedSize => AppConstants.formatBytes(sizeBytes);
 
   ModelType get modelType => catalogVariant.modelType;
 
@@ -32,7 +37,15 @@ class GemmaModelSpec {
   bool get supportsThinking => catalogVariant.supportsThinking;
 
   bool get supportsImage => catalogVariant.supportsImage;
+
+  bool get supportsAudio => catalogVariant.supportsAudio;
+
+  List<int> get contextTokenPresets => AppConstants.contextTokenPresets
+      .where((t) => t >= minContextTokens && t <= maxContextTokens)
+      .toList(growable: false);
 }
+
+typedef GemmaModelSpec = AiModelSpec;
 
 class AppConstants {
   static final InferenceVariant model2bCatalogVariant =
@@ -43,9 +56,9 @@ class AppConstants {
   static const String model2bFileName = 'gemma-4-E2B-it.litertlm';
   static const String model4bFileName = 'gemma-4-E4B-it.litertlm';
 
-  /// Limites oficiais de contexto dos bundles LiteRT-LM Gemma 4 E2B e E4B:
+  /// Limites globais de contexto dos bundles LiteRT-LM:
   /// - Mínimo rígido: 1024 tokens (`kv_cache_max_len` do runtime `.litertlm`).
-  /// - Máximo suportado pelo modelo: 32.768 tokens (32K).
+  /// - Máximo suportado (Gemma 4): 32.768 tokens (32K).
   static const int minContextTokens = 1024;
   static const int maxContextTokens = 32768;
   static const int recommendedMinVisionTokens = 4096;
@@ -58,23 +71,111 @@ class AppConstants {
     32768,
   ];
 
-  static final GemmaModelSpec model2b = GemmaModelSpec(
-    displayName: 'Gemma 4 E2B',
-    shortLabel: '2B',
-    catalogVariant: model2bCatalogVariant,
-    minContextTokens: minContextTokens,
-    maxContextTokens: maxContextTokens,
-  );
+  /// Modelos do catálogo excluídos por serem demonstrações de fine-tune específico.
+  static const Set<String> _excludedCatalogModelIds = {
+    'functiongemma-270m-flutter-demo',
+  };
 
-  static final GemmaModelSpec model4b = GemmaModelSpec(
-    displayName: 'Gemma 4 E4B',
-    shortLabel: '4B',
-    catalogVariant: model4bCatalogVariant,
-    minContextTokens: minContextTokens,
-    maxContextTokens: maxContextTokens,
-  );
+  /// Ordem de destaque no topo do catálogo.
+  static const List<String> _featuredModelIds = [
+    'gemma-4-e2b-it',
+    'gemma-4-e4b-it',
+  ];
 
-  static GemmaModelSpec modelSpec({required bool is2B}) =>
+  /// Catálogo dinâmico de todos os modelos abertos (sem exigência de token no
+  /// Hugging Face) disponíveis em `LiteRtLmModels` para execução em CPU/GPU.
+  static final List<AiModelSpec> availableModels = _buildOpenCatalogModels();
+
+  static final AiModelSpec model2b = modelSpecById(model2bCatalogVariant.id);
+
+  static final AiModelSpec model4b = modelSpecById(model4bCatalogVariant.id);
+
+  static String get defaultModelId => model2b.id;
+
+  static List<AiModelSpec> _buildOpenCatalogModels() {
+    final specs = <AiModelSpec>[];
+
+    for (final model in LiteRtLmModels.all) {
+      if (_excludedCatalogModelIds.contains(model.id)) continue;
+
+      final variant = _pickOpenGenericVariant(model);
+      if (variant == null) continue;
+
+      final limits = _contextLimitsFor(model.id, variant);
+      specs.add(
+        AiModelSpec(
+          id: variant.id,
+          displayName: model.displayName,
+          family: model.family,
+          catalogVariant: variant,
+          minContextTokens: limits.min,
+          maxContextTokens: limits.max,
+        ),
+      );
+    }
+
+    specs.sort((a, b) {
+      final aFeatured = _featuredModelIds.indexOf(a.catalogVariant.modelId);
+      final bFeatured = _featuredModelIds.indexOf(b.catalogVariant.modelId);
+      if (aFeatured != -1 || bFeatured != -1) {
+        if (aFeatured == -1) return 1;
+        if (bFeatured == -1) return -1;
+        return aFeatured.compareTo(bFeatured);
+      }
+      final sizeCmp = a.sizeBytes.compareTo(b.sizeBytes);
+      if (sizeCmp != 0) return sizeCmp;
+      return a.displayName.compareTo(b.displayName);
+    });
+
+    return List.unmodifiable(specs);
+  }
+
+  static LiteRtLmVariant? _pickOpenGenericVariant(LiteRtLmModel model) {
+    for (final variant in model.variants) {
+      if (variant.isWebBundle) continue;
+      if (variant.npuTarget != null) continue;
+      if (variant.file.gated) continue;
+      if (variant.backendsHere.isEmpty) continue;
+      return variant;
+    }
+    return null;
+  }
+
+  static ({int min, int max}) _contextLimitsFor(
+    String modelId,
+    LiteRtLmVariant variant,
+  ) {
+    if (modelId == 'gemma-4-e2b-it' || modelId == 'gemma-4-e4b-it') {
+      return (min: 1024, max: 32768);
+    }
+
+    final lowerName = '${variant.id} ${variant.file.installFilename}'
+        .toLowerCase();
+    if (lowerName.contains('ekv1024')) {
+      return (min: 1024, max: 1024);
+    }
+    if (lowerName.contains('ekv4096')) {
+      return (min: 1024, max: 4096);
+    }
+    if (modelId == 'translategemma-4b-it') {
+      // TranslateGemma int4/int8 usa prefill mínimo de 1024 tokens: precisa de >= 2048.
+      return (min: 2048, max: 4096);
+    }
+    return (min: 1024, max: 8192);
+  }
+
+  static AiModelSpec modelSpecById(String? modelId) {
+    if (modelId != null) {
+      for (final spec in availableModels) {
+        if (spec.id == modelId || spec.catalogVariant.modelId == modelId) {
+          return spec;
+        }
+      }
+    }
+    return availableModels.first;
+  }
+
+  static AiModelSpec modelSpec({required bool is2B}) =>
       is2B ? model2b : model4b;
 
   static const String systemInstruction = 'You are a helpful assistant.';
@@ -121,8 +222,14 @@ class AppConstants {
         effective == TargetPlatform.iOS;
   }
 
-  static int clampMaxTokens(int value, {bool is2B = true}) {
-    final spec = modelSpec(is2B: is2B);
+  static int clampMaxTokens(
+    int value, {
+    String? modelId,
+    bool is2B = true,
+  }) {
+    final spec = modelId != null
+        ? modelSpecById(modelId)
+        : modelSpec(is2B: is2B);
     if (value < spec.minContextTokens) return spec.minContextTokens;
     if (value > spec.maxContextTokens) return spec.maxContextTokens;
     return value;
@@ -141,5 +248,15 @@ class AppConstants {
       return '${tokens ~/ 1024}K';
     }
     return tokens.toString();
+  }
+
+  static String formatBytes(int bytes) {
+    if (bytes <= 0) return '—';
+    if (bytes >= 1000 * 1000 * 1000) {
+      final gb = (bytes / (1000 * 1000 * 1000)).toStringAsFixed(2);
+      return '${gb.replaceAll('.', ',')} GB';
+    }
+    final mb = (bytes / (1000 * 1000)).round();
+    return '$mb MB';
   }
 }

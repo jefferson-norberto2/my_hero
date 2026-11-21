@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/model_selector_widget.dart';
@@ -18,6 +19,9 @@ void main() {
     mockRepository = MockChatRepository();
     mockMediaPicker = MockMediaPickerService();
     when(() => mockRepository.getConversations()).thenAnswer((_) async => []);
+    when(() => mockRepository.getInstalledModelFileNames())
+        .thenAnswer((_) async => <String>{});
+    when(() => mockRepository.uninstallModel(any())).thenAnswer((_) async {});
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenAnswer((_) async {});
   });
@@ -81,6 +85,53 @@ void main() {
       await tester.tap(find.text('NPU'));
       await tester.pump();
       expect(controller.selectedBackend.value, PreferredBackend.npu);
+    });
+
+    testWidgets('highlights downloaded models, filters installed and confirms uninstall', (tester) async {
+      final gemma2b = AppConstants.model2b;
+      final installed = <String>{gemma2b.fileName};
+
+      when(() => mockRepository.getInstalledModelFileNames())
+          .thenAnswer((_) async => Set<String>.from(installed));
+      when(() => mockRepository.uninstallModel(gemma2b.fileName))
+          .thenAnswer((_) async {
+        installed.remove(gemma2b.fileName);
+      });
+
+      final controller = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        platform: TargetPlatform.linux,
+      );
+      await controller.refreshInstalledModels();
+
+      await tester.pumpWidget(wrap(ModelSelectorWidget(controller: controller)));
+
+      expect(find.text('Baixados (1)'), findsOneWidget);
+      expect(find.text('Baixado'), findsOneWidget);
+      expect(find.text('Carregar ${gemma2b.displayName}'), findsOneWidget);
+
+      // Filtra apenas os baixados
+      await tester.tap(find.text('Baixados (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text(gemma2b.displayName), findsOneWidget);
+
+      // Toca no botão de excluir e confirma no diálogo
+      await tester.tap(find.byTooltip('Excluir ${gemma2b.displayName}'));
+      await tester.pumpAndSettle();
+      expect(find.text('Excluir modelo?'), findsOneWidget);
+
+      await tester.tap(find.text('Excluir'));
+      await tester.pumpAndSettle();
+
+      verify(() => mockRepository.uninstallModel(gemma2b.fileName)).called(1);
+      expect(find.text('Baixados (0)'), findsOneWidget);
+      expect(
+        find.text(
+          'Baixar e Carregar ${gemma2b.displayName} (${gemma2b.formattedSize})',
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

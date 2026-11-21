@@ -2,6 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Necessário no Android 13+ (API 33+) para exibir a notificação de progresso e promover o download a Foreground Service -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Necessário no Android 14+ (API 34+) para downloads de modelos em foreground -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 

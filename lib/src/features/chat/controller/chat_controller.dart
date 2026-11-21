@@ -323,6 +323,23 @@ class ChatController {
       isLoading.value = false;
       loadingStatus.value = '';
       errorMessage.value = 'Download cancelado pelo usuário.';
+    } on DownloadException catch (e) {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      errorMessage.value = switch (e.error) {
+        CanceledError() => 'Download cancelado pelo usuário.',
+        NetworkError(:final message) =>
+          'Erro de conexão durante o download ($message). Verifique sua internet e tente novamente.',
+        RateLimitedError() =>
+          'Limite de requisições atingido no servidor (HTTP 429). Aguarde alguns instantes e tente novamente.',
+        ServerError(:final statusCode) =>
+          'Erro temporário no servidor de download (HTTP $statusCode). Tente novamente mais tarde.',
+        UnauthorizedError() || ForbiddenError() =>
+          'Acesso negado ao arquivo do modelo no servidor.',
+        NotFoundError() =>
+          'Arquivo do modelo não encontrado no servidor (HTTP 404).',
+        UnknownError(:final message) => 'Falha no download do modelo: $message',
+      };
     } on ModelValidationException catch (e) {
       isLoading.value = false;
       loadingStatus.value = '';

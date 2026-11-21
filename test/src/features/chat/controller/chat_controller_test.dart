@@ -416,5 +416,44 @@ void main() {
       expect(controller.errorMessage.value, contains('GPU'));
       expect(controller.errorMessage.value, contains('Vulkan device unavailable'));
     });
+
+    test('downloadAndLoadModel should treat DownloadException(CanceledError) from Android notification cancel as user cancel', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(const DownloadException(DownloadError.canceled()));
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(controller.errorMessage.value, 'Download cancelado pelo usuário.');
+    });
+
+    test('downloadAndLoadModel should surface localized network error on DownloadException(NetworkError)', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(const DownloadException(DownloadError.network('timeout')));
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(controller.errorMessage.value, contains('Erro de conexão'));
+      expect(controller.errorMessage.value, contains('timeout'));
+    });
   });
 }

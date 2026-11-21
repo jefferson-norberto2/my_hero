@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
 import '../adapter/response_style.dart';

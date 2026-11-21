@@ -1,6 +1,6 @@
 # My Hero 🦸‍♂️
 
-Aplicativo Flutter multiplataforma (**Android**, **Linux** e **Windows**) para interação e execução local de modelos de Inteligência Artificial **Google Gemma 4** (E2B e E4B) utilizando `flutter_gemma` (`1.11.4`) + `flutter_gemma_litertlm` (`1.8.6`) via **Dart FFI + Native Assets**, com suporte a streaming, **Thinking Mode**, seleção de **janela de contexto (`maxTokens`)**, escolha de backend (**CPU / GPU / NPU**) e envio de imagens.
+Aplicativo Flutter multiplataforma (**Android**, **Linux** e **Windows**) para interação e execução local de modelos de Inteligência Artificial **Google Gemma 4** (E2B e E4B) utilizando `flutter_edge_ai` (`2.7.1`) + `flutter_edge_ai_litertlm` (`1.21.0`) + `litertlm_dart` (`0.19.1+1`) via **Dart FFI + Native Assets**, com suporte a streaming, **Thinking Mode**, seleção de **janela de contexto (`maxTokens`)**, escolha de backend (**CPU / GPU / NPU**) e envio de imagens.
 
 ---
 
@@ -47,7 +47,7 @@ lib/
             │   │   └── response_style.dart                    # Estilos de resposta (Breve, Simples, Detalhada)
             │   ├── datasource/
             │   │   ├── chat_history_datasource.dart           # Persistência do histórico em disco (Application Support no Desktop)
-            │   │   └── gemma_local_datasource.dart            # Comunicação com flutter_gemma + LiteRtLmEngine (download nativo e FFI)
+            │   │   └── gemma_local_datasource.dart            # Comunicação com flutter_edge_ai + LiteRtLmEngine (catálogo oficial e FFI)
             │   └── repository/
             │       ├── chat_repository.dart                   # Interface/Contrato do repositório
             │       └── chat_repository_impl.dart              # Implementação orquestrando instalador nativo, inferência e histórico
@@ -79,14 +79,15 @@ Localizada em `lib/src/core/di/injection.dart`.
 ### 2. Gerenciamento de Estado Reativo (`signals_flutter`)
 Os estados das features utilizam **Signals** para reatividade granular (`SignalBuilder` e `effect`).
 
-### 3. Engine Modular LiteRT-LM (`flutter_gemma 1.11.4` + `flutter_gemma_litertlm 1.8.6`)
-- **Dart FFI + Native Assets:** todas as plataformas nativas (Android, Linux e Windows) executam o LiteRT-LM (`v0.17.1-a`) diretamente via C API, sem JRE nem servidor gRPC.
-- **Instalador Nativo de Modelos:** downloads gerenciados por `FlutterGemma.installModel(...).fromNetwork(...)` com verificação idempotente, cancelamento via `CancelToken`, modo foreground no Android e armazenamento seguro fora de `Documents`/OneDrive no Windows (`%LOCALAPPDATA%\flutter_gemma`) e Linux (`~/.local/share/<app>/flutter_gemma`).
+### 3. Engine Modular LiteRT-LM (`flutter_edge_ai 2.7.1` + `flutter_edge_ai_litertlm 1.21.0`)
+- **Dart FFI + Native Assets (`litertlm_dart 0.19.1+1`):** todas as plataformas nativas (Android, Linux e Windows) executam o **LiteRT-LM `v0.19.1` (`native-v0.19.1-c`, C API 1.0)** diretamente via FFI, sem JRE nem servidor gRPC.
+- **Instalador Nativo via Catálogo Oficial:** downloads gerenciados por `FlutterEdgeAi.installModelFromCatalog(LiteRtLmModels.gemma4E2bIt.generic)` / `gemma4E4bIt.generic` com revisões pinadas no Hugging Face, validação automática de integridade de tamanho (`ModelValidationException`), cancelamento via `CancelToken`, modo foreground no Android e armazenamento seguro fora de `Documents`/OneDrive no Windows (`%LOCALAPPDATA%\flutter_gemma`) e Linux (`~/.local/share/<app>/flutter_gemma`).
+- **Sessões Independentes (`openChat`) e Sampling Nativo:** utiliza `InferenceModel.openChat(...)` com rewind in-place ao parar geração (preservando imagens), defaults de sampling embarcados no `.litertlm` (Gemma 4: `temperature: 1.0, topK: 64, topP: 0.95`) e tratamento dedicado de `ContextLimitException` e `LiteRtLmBundleException`.
 - **Backends por Plataforma + Fallback Transparente:**
-  - **Linux:** `CPU` e `GPU` (Vulkan).
-  - **Windows (`x86_64`):** `CPU`, `GPU` (DirectX 12 / WebGPU com DXC embutido) e `NPU` (Intel LunarLake/PantherLake).
-  - **Android (`arm64-v8a`, `minSdk 30`):** `CPU`, `GPU` (OpenCL) e `NPU` (Qualcomm Snapdragon).
-  - Caso o acelerador solicitado não esteja disponível, o runtime realiza fallback automático (`NPU → GPU → CPU`) e o app exibe o `activeBackend` real na barra superior.
+  - **Linux (`x86_64` / `arm64`):** `CPU` e `GPU` (Vulkan; FP32 automático acima de 2.048 tokens no Gemma 4).
+  - **Windows (`x86_64`):** `CPU`, `GPU` (DirectX 12 / WebGPU com DXC embutido) e `NPU` (Intel Lunar Lake / Panther Lake via OpenVINO `2026.4.1`, embarcado por padrão).
+  - **Android (`arm64-v8a`, `minSdk 30`):** `CPU` e `GPU` (OpenCL) embarcados por padrão (mantendo o APK enxuto); NPUs (Qualcomm Snapdragon / Google Tensor) são opt-in via `hooks: user_defines: litertlm_dart:` no `pubspec.yaml` quando utilizadas variantes compiladas por SoC.
+  - Em bundles genéricos ou quando o acelerador solicitado não está disponível, o runtime lê o cabeçalho do `.litertlm` e realiza fallback automático (`NPU → GPU → CPU`), exibindo o `activeBackend` real na barra superior.
 - **Janela de Contexto (`maxTokens`) e Thinking Mode Configuráveis:** o usuário escolhe entre presets de `1K` a `32K` tokens (limites oficiais dos bundles Gemma 4 E2B/E4B) e ativa/desativa o **Modo Pensamento**, com bloco retrátil de raciocínio em cada resposta.
 
 ### 4. Requisitos por Plataforma

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../controller/chat_controller.dart';
@@ -62,7 +62,7 @@ class ModelSelectorWidget extends StatelessWidget {
             if (selectedBackend == PreferredBackend.npu) ...[
               const SizedBox(height: 6),
               Text(
-                'NPU requer hardware compatível (Snapdragon / Intel NPU) e variante NPU; caso contrário, o app fará fallback automático para GPU/CPU.',
+                'NPU requer hardware compatível (Snapdragon / Google Tensor / Intel NPU) e variante NPU; em bundles genéricos, o runtime faz fallback automático para GPU/CPU.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,

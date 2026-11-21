@@ -1,4 +1,4 @@
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import '../../../../core/constants/app_constants.dart';
 import 'chat_message_adapter.dart';
 import 'response_style.dart';

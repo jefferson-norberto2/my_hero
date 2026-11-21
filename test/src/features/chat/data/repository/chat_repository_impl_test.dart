@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
@@ -24,6 +24,7 @@ void main() {
     registerFallbackValue(PreferredBackend.cpu);
     registerFallbackValue(ModelType.gemma4);
     registerFallbackValue(ModelFileType.litertlm);
+    registerFallbackValue(AppConstants.model2bCatalogVariant);
   });
 
   setUp(() {
@@ -36,17 +37,15 @@ void main() {
   });
 
   group('ChatRepositoryImpl - loadModel', () {
-    test('should install model via native installer, create active model and chat with responseStyle and thinking', () async {
+    test('should install model via catalog installer, create active model and openChat with responseStyle and thinking', () async {
       final recordedStatuses = <String>[];
       final recordedProgresses = <double>[];
 
       when(() => mockGemmaDatasource.isModelInstalled(AppConstants.model2bFileName))
           .thenAnswer((_) async => false);
       when(
-        () => mockGemmaDatasource.installModelFromNetwork(
-          url: AppConstants.model2bUrl,
-          modelType: ModelType.gemma4,
-          fileType: ModelFileType.litertlm,
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: AppConstants.model2bCatalogVariant,
           onProgress: any(named: 'onProgress'),
         ),
       ).thenAnswer((invocation) async {
@@ -62,7 +61,7 @@ void main() {
         ),
       ).thenAnswer((_) async {});
       when(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: any(named: 'systemInstruction'),
           supportImage: any(named: 'supportImage'),
@@ -89,10 +88,8 @@ void main() {
       expect(recordedProgresses, contains(1.0));
 
       verify(
-        () => mockGemmaDatasource.installModelFromNetwork(
-          url: AppConstants.model2bUrl,
-          modelType: ModelType.gemma4,
-          fileType: ModelFileType.litertlm,
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: AppConstants.model2bCatalogVariant,
           onProgress: any(named: 'onProgress'),
         ),
       ).called(1);
@@ -104,7 +101,7 @@ void main() {
         ),
       ).called(1);
       verify(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: ResponseStyle.detailed.systemInstruction,
           supportImage: true,
@@ -117,10 +114,8 @@ void main() {
       when(() => mockGemmaDatasource.isModelInstalled(AppConstants.model4bFileName))
           .thenAnswer((_) async => true);
       when(
-        () => mockGemmaDatasource.installModelFromNetwork(
-          url: AppConstants.model4bUrl,
-          modelType: ModelType.gemma4,
-          fileType: ModelFileType.litertlm,
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: AppConstants.model4bCatalogVariant,
           onProgress: any(named: 'onProgress'),
         ),
       ).thenAnswer((_) async {});
@@ -132,7 +127,7 @@ void main() {
         ),
       ).thenAnswer((_) async {});
       when(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: any(named: 'systemInstruction'),
           supportImage: any(named: 'supportImage'),
@@ -166,14 +161,12 @@ void main() {
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
     });
 
-    test('should rethrow error when installModelFromNetwork fails', () async {
+    test('should rethrow error when installModelFromCatalog fails', () async {
       when(() => mockGemmaDatasource.isModelInstalled(AppConstants.model4bFileName))
           .thenAnswer((_) async => false);
       when(
-        () => mockGemmaDatasource.installModelFromNetwork(
-          url: AppConstants.model4bUrl,
-          modelType: ModelType.gemma4,
-          fileType: ModelFileType.litertlm,
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: AppConstants.model4bCatalogVariant,
           onProgress: any(named: 'onProgress'),
         ),
       ).thenThrow(Exception('Falha de conexão'));
@@ -322,9 +315,9 @@ void main() {
   });
 
   group('ChatRepositoryImpl - startNewChatSession', () {
-    test('should create fresh chat with brief style instruction and thinking flag', () async {
+    test('should open fresh chat with brief style instruction and thinking flag', () async {
       when(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: any(named: 'systemInstruction'),
           supportImage: any(named: 'supportImage'),
@@ -339,7 +332,7 @@ void main() {
       );
 
       verify(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: ResponseStyle.brief.systemInstruction,
           supportImage: true,
@@ -349,9 +342,9 @@ void main() {
       verifyNever(() => mockGemmaDatasource.addQueryChunk(any()));
     });
 
-    test('should create fresh chat and replay only non-system messages when contextMessages provided', () async {
+    test('should open fresh chat and replay only non-system messages when contextMessages provided', () async {
       when(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: any(named: 'systemInstruction'),
           supportImage: any(named: 'supportImage'),
@@ -373,7 +366,7 @@ void main() {
       );
 
       verify(
-        () => mockGemmaDatasource.createChat(
+        () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: ResponseStyle.detailed.systemInstruction,
           supportImage: true,

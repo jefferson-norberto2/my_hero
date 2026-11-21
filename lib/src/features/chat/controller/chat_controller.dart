@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show TargetPlatform;
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
+import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/services/media_picker_service.dart';
@@ -322,6 +323,33 @@ class ChatController {
       isLoading.value = false;
       loadingStatus.value = '';
       errorMessage.value = 'Download cancelado pelo usuário.';
+    } on ModelValidationException catch (e) {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      errorMessage.value =
+          'O arquivo baixado falhou na verificação de integridade (${e.message}). Tente baixar novamente.';
+    } on LiteRtLmBundleException catch (e) {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      errorMessage.value = switch (e.problem) {
+        LiteRtLmBundleProblem.incomplete =>
+          'O arquivo do modelo está incompleto ou corrompido. Tente baixar novamente.',
+        LiteRtLmBundleProblem.wrongBackend ||
+        LiteRtLmBundleProblem.unsupportedNpu =>
+          'O modelo selecionado não é compatível com o backend escolhido: ${e.message}',
+        _ => 'Arquivo de modelo inválido ou incompatível: ${e.message}',
+      };
+    } on NoActiveModelError {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      errorMessage.value =
+          'Nenhum modelo ativo foi encontrado. Inicie o download novamente.';
+    } on BackendInitException catch (e) {
+      isLoading.value = false;
+      loadingStatus.value = '';
+      final backendName = AppConstants.backendLabel(e.lastAttempt.backend);
+      errorMessage.value =
+          'Falha ao inicializar o modelo em $backendName: ${e.lastAttempt.error}';
     } catch (e) {
       isLoading.value = false;
       errorMessage.value = 'Falha ao carregar o modelo: $e';
@@ -493,6 +521,16 @@ class ChatController {
               thinkingText: (lastMsg.thinkingText ?? '') + content,
             );
         }
+        chatHistory.value = currentList;
+      }
+    } on ContextLimitException {
+      if (!_stopGenerationFlag) {
+        final currentList = List<ChatMessage>.from(chatHistory.value);
+        final lastIndex = currentList.length - 1;
+        currentList[lastIndex] = currentList[lastIndex].copyWith(
+          text:
+              'Sistema: A janela de contexto (${AppConstants.formatTokenCount(maxTokens.value)} tokens) foi atingida. Encurte a mensagem, aumente o limite de tokens nas configurações ou inicie uma nova conversa.',
+        );
         chatHistory.value = currentList;
       }
     } catch (e) {

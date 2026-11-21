@@ -1,38 +1,44 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
+import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 
 class GemmaModelSpec {
   final String displayName;
   final String shortLabel;
-  final String fileName;
-  final String downloadUrl;
+  final InferenceVariant catalogVariant;
   final int minContextTokens;
   final int maxContextTokens;
-  final ModelType modelType;
-  final ModelFileType fileType;
-  final bool supportsThinking;
-  final bool supportsImage;
 
   const GemmaModelSpec({
     required this.displayName,
     required this.shortLabel,
-    required this.fileName,
-    required this.downloadUrl,
+    required this.catalogVariant,
     required this.minContextTokens,
     required this.maxContextTokens,
-    this.modelType = ModelType.gemma4,
-    this.fileType = ModelFileType.litertlm,
-    this.supportsThinking = true,
-    this.supportsImage = true,
   });
+
+  String get fileName =>
+      catalogVariant.file?.installFilename ?? '${catalogVariant.modelId}.litertlm';
+
+  String get downloadUrl => catalogVariant.file?.url ?? '';
+
+  int? get expectedSizeBytes => catalogVariant.file?.sizeBytes;
+
+  ModelType get modelType => catalogVariant.modelType;
+
+  ModelFileType get fileType => catalogVariant.fileType;
+
+  bool get supportsThinking => catalogVariant.supportsThinking;
+
+  bool get supportsImage => catalogVariant.supportsImage;
 }
 
 class AppConstants {
-  static const String model2bUrl =
-      'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
-  static const String model4bUrl =
-      'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm';
+  static final InferenceVariant model2bCatalogVariant =
+      LiteRtLmModels.gemma4E2bIt.generic;
+  static final InferenceVariant model4bCatalogVariant =
+      LiteRtLmModels.gemma4E4bIt.generic;
 
   static const String model2bFileName = 'gemma-4-E2B-it.litertlm';
   static const String model4bFileName = 'gemma-4-E4B-it.litertlm';
@@ -52,20 +58,18 @@ class AppConstants {
     32768,
   ];
 
-  static const GemmaModelSpec model2b = GemmaModelSpec(
+  static final GemmaModelSpec model2b = GemmaModelSpec(
     displayName: 'Gemma 4 E2B',
     shortLabel: '2B',
-    fileName: model2bFileName,
-    downloadUrl: model2bUrl,
+    catalogVariant: model2bCatalogVariant,
     minContextTokens: minContextTokens,
     maxContextTokens: maxContextTokens,
   );
 
-  static const GemmaModelSpec model4b = GemmaModelSpec(
+  static final GemmaModelSpec model4b = GemmaModelSpec(
     displayName: 'Gemma 4 E4B',
     shortLabel: '4B',
-    fileName: model4bFileName,
-    downloadUrl: model4bUrl,
+    catalogVariant: model4bCatalogVariant,
     minContextTokens: minContextTokens,
     maxContextTokens: maxContextTokens,
   );
@@ -89,8 +93,9 @@ class AppConstants {
     };
   }
 
-  /// NPU é suportado no LiteRT-LM FFI apenas no Android (Qualcomm Snapdragon)
-  /// e no Windows (Intel LunarLake/PantherLake).
+  /// NPU é suportado no LiteRT-LM FFI no Android (Qualcomm Snapdragon / Google
+  /// Tensor — via variantes por SoC + opt-in) e no Windows (Intel Lunar Lake /
+  /// Panther Lake — embarcado por padrão). No Linux x64 não há NPU.
   static bool supportsNpuOnPlatform([TargetPlatform? platform]) {
     if (kIsWeb) return false;
     final effective = platform ?? defaultTargetPlatform;

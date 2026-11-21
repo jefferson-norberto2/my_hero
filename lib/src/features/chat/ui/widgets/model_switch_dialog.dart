@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../controller/chat_controller.dart';
 import '../../data/adapter/response_style.dart';
@@ -123,7 +123,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
             if (_selectedBackend == PreferredBackend.npu) ...[
               const SizedBox(height: 6),
               Text(
-                'NPU requer dispositivo compatível e modelo compilado para NPU; caso contrário, o fallback automático para GPU/CPU será aplicado.',
+                'NPU requer dispositivo compatível (Snapdragon / Google Tensor / Intel NPU) e variante NPU; em bundles genéricos, o runtime faz fallback automático para GPU/CPU.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

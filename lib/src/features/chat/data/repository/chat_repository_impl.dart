@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../adapter/chat_message_adapter.dart';
 import '../adapter/conversation_model.dart';
@@ -50,10 +50,8 @@ class ChatRepositoryImpl implements ChatRepository {
       onProgress(0.0, 'Iniciando download de ${spec.displayName}...');
     }
 
-    await _gemmaDatasource.installModelFromNetwork(
-      url: spec.downloadUrl,
-      modelType: spec.modelType,
-      fileType: spec.fileType,
+    await _gemmaDatasource.installModelFromCatalog(
+      variant: spec.catalogVariant,
       onProgress: (percent) {
         final normalized = (percent / 100.0).clamp(0.0, 1.0);
         onProgress(
@@ -72,7 +70,7 @@ class ChatRepositoryImpl implements ChatRepository {
       maxTokens: safeMaxTokens,
       supportImage: supportImage,
     );
-    await _gemmaDatasource.createChat(
+    await _gemmaDatasource.openChat(
       modelType: spec.modelType,
       supportImage: supportImage,
       enableThinking: enableThinking,
@@ -96,7 +94,7 @@ class ChatRepositoryImpl implements ChatRepository {
     bool enableThinking = false,
   }) async {
     // Descarta qualquer sessão anterior e inicia uma nova sessão limpa com o estilo desejado
-    await _gemmaDatasource.createChat(
+    await _gemmaDatasource.openChat(
       modelType: ModelType.gemma4,
       supportImage: supportImage,
       enableThinking: enableThinking,

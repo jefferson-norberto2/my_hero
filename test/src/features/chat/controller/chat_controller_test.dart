@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show TargetPlatform;
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
+import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
@@ -287,6 +288,133 @@ void main() {
 
       expect(controller.chatHistory.value.first.text, 'Descreva esta foto');
       expect(controller.chatHistory.value.first.imageBytes, fakeBytes);
+    });
+  });
+
+  group('ChatController - Typed flutter_edge_ai Error Handling', () {
+    test('sendMessage should show friendly message on ContextLimitException', () async {
+      controller.isModelLoaded.value = true;
+
+      when(
+        () => mockRepository.sendMessage(
+          text: any(named: 'text'),
+          imageBytes: any(named: 'imageBytes'),
+        ),
+      ).thenAnswer(
+        (_) => Stream<ChatStreamChunk>.error(
+          const ContextLimitException('Input exceeds context window'),
+        ),
+      );
+
+      await controller.sendMessage('Prompt gigante');
+
+      expect(controller.isGenerating.value, isFalse);
+      expect(
+        controller.chatHistory.value.last.text,
+        contains('janela de contexto'),
+      );
+      expect(controller.chatHistory.value.last.text, contains('4K'));
+    });
+
+    test('downloadAndLoadModel should report incomplete bundle on LiteRtLmBundleException', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(
+        const LiteRtLmBundleException(
+          LiteRtLmBundleProblem.incomplete,
+          'File truncated',
+        ),
+      );
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(
+        controller.errorMessage.value,
+        contains('incompleto ou corrompido'),
+      );
+    });
+
+    test('downloadAndLoadModel should report validation mismatch on ModelValidationException', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(const ModelValidationException('size mismatch'));
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(
+        controller.errorMessage.value,
+        contains('verificação de integridade'),
+      );
+    });
+
+    test('downloadAndLoadModel should report missing active model on NoActiveModelError', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(NoActiveModelError('No active inference model'));
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(
+        controller.errorMessage.value,
+        contains('Nenhum modelo ativo foi encontrado'),
+      );
+    });
+
+    test('downloadAndLoadModel should report failing backend on BackendInitException', () async {
+      when(
+        () => mockRepository.loadModel(
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(
+        BackendInitException(
+          attempts: [
+            BackendInitAttemptFailure(
+              backend: PreferredBackend.gpu,
+              error: 'Vulkan device unavailable',
+              stackTrace: StackTrace.empty,
+            ),
+          ],
+        ),
+      );
+
+      await controller.downloadAndLoadModel(is2B: true);
+
+      expect(controller.isLoading.value, isFalse);
+      expect(controller.errorMessage.value, contains('GPU'));
+      expect(controller.errorMessage.value, contains('Vulkan device unavailable'));
     });
   });
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:my_hero/src/features/chat/data/datasource/gemma_local_datasource.dart';
 
 void main() {
@@ -10,13 +10,14 @@ void main() {
   });
 
   group('GemmaLocalDatasourceImpl state validation', () {
-    test('activeBackend should be null before active model is initialized', () {
+    test('activeBackend and activeVisionBackend should be null before active model is initialized', () {
       expect(datasource.activeBackend, isNull);
+      expect(datasource.activeVisionBackend, isNull);
     });
 
-    test('createChat should throw StateError when active model is not initialized', () async {
+    test('openChat should throw StateError when active model is not initialized', () async {
       expect(
-        () => datasource.createChat(),
+        () => datasource.openChat(),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,

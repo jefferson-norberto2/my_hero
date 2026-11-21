@@ -1,21 +1,21 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter_gemma/flutter_gemma.dart';
-import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
+import 'package:flutter_edge_ai/flutter_edge_ai.dart';
+import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import '../../../../core/constants/app_constants.dart';
 
 abstract class GemmaLocalDatasource {
   PreferredBackend? get activeBackend;
 
+  PreferredBackend? get activeVisionBackend;
+
   Future<void> initialize();
 
   Future<bool> isModelInstalled(String modelFileName);
 
-  Future<void> installModelFromNetwork({
-    required String url,
+  Future<void> installModelFromCatalog({
+    required InferenceVariant variant,
     required void Function(int percent) onProgress,
-    ModelType modelType = ModelType.gemma4,
-    ModelFileType fileType = ModelFileType.litertlm,
     CancelToken? cancelToken,
   });
 
@@ -29,13 +29,14 @@ abstract class GemmaLocalDatasource {
     ActivationDataType? activationDataType,
   });
 
-  Future<void> createChat({
-    ModelType modelType = ModelType.gemma4,
+  Future<void> openChat({
+    ModelType? modelType,
     String? systemInstruction,
     bool supportImage = true,
     bool enableThinking = false,
-    double temperature = 0.8,
-    int topK = 40,
+    double? temperature,
+    int? topK,
+    double? topP,
   });
 
   Future<void> addQueryChunk(Message message);
@@ -56,23 +57,25 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   PreferredBackend? get activeBackend => _activeModel?.activeBackend;
 
   @override
+  PreferredBackend? get activeVisionBackend =>
+      _activeModel?.activeVisionBackend;
+
+  @override
   Future<void> initialize() async {
-    await FlutterGemma.initialize(
-      inferenceEngines: [LiteRtLmEngine()],
+    await FlutterEdgeAi.initialize(
+      inferenceEngines: const [LiteRtLmEngine()],
     );
   }
 
   @override
   Future<bool> isModelInstalled(String modelFileName) async {
-    return FlutterGemma.isModelInstalled(modelFileName);
+    return FlutterEdgeAi.isModelInstalled(modelFileName);
   }
 
   @override
-  Future<void> installModelFromNetwork({
-    required String url,
+  Future<void> installModelFromCatalog({
+    required InferenceVariant variant,
     required void Function(int percent) onProgress,
-    ModelType modelType = ModelType.gemma4,
-    ModelFileType fileType = ModelFileType.litertlm,
     CancelToken? cancelToken,
   }) async {
     final token = cancelToken ?? CancelToken();
@@ -82,11 +85,12 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
         defaultTargetPlatform == TargetPlatform.android;
 
     try {
-      await FlutterGemma.installModel(
-        modelType: modelType,
-        fileType: fileType,
+      await _uninstallConflictingActiveModelIfNeeded(variant);
+
+      await FlutterEdgeAi.installModelFromCatalog(
+        variant,
+        foreground: useForeground,
       )
-          .fromNetwork(url, foreground: useForeground)
           .withProgress(onProgress)
           .withCancelToken(token)
           .install();
@@ -95,6 +99,33 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
         _activeDownloadCancelToken = null;
       }
     }
+  }
+
+  /// Se o usuário possuía o mesmo arquivo instalado por outra URL (ex.:
+  /// `/resolve/main/` da `flutter_gemma 1.11.4` ou de uma revisão anterior do
+  /// catálogo) como modelo ativo, desinstala-o antes de instalar a variante
+  /// pinada do catálogo para evitar o `StateError` de substituição em uso.
+  Future<void> _uninstallConflictingActiveModelIfNeeded(
+    InferenceVariant variant,
+  ) async {
+    final file = variant.file;
+    if (file == null) return;
+
+    final activeSpec = FlutterEdgeAi.activeModelSpec;
+    if (activeSpec == null) return;
+
+    final usesSameFilename = activeSpec.files.any(
+      (f) => f.filename == file.installFilename,
+    );
+    if (!usesSameFilename) return;
+
+    final activeSource = activeSpec.modelSource;
+    final samePinnedUrl =
+        activeSource is NetworkSource && activeSource.url == file.url;
+    if (samePinnedUrl) return;
+
+    await close();
+    await FlutterEdgeAi.uninstallModel(file.installFilename);
   }
 
   @override
@@ -116,7 +147,7 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
       _activeChat = null;
     }
 
-    _activeModel = await FlutterGemma.getActiveModel(
+    _activeModel = await FlutterEdgeAi.getActiveModel(
       maxTokens: maxTokens,
       preferredBackend: preferredBackend,
       supportImage: supportImage,
@@ -126,13 +157,14 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
   }
 
   @override
-  Future<void> createChat({
-    ModelType modelType = ModelType.gemma4,
+  Future<void> openChat({
+    ModelType? modelType,
     String? systemInstruction,
     bool supportImage = true,
     bool enableThinking = false,
-    double temperature = 0.8,
-    int topK = 40,
+    double? temperature,
+    int? topK,
+    double? topP,
   }) async {
     final model = _activeModel;
     if (model == null) {
@@ -144,12 +176,13 @@ class GemmaLocalDatasourceImpl implements GemmaLocalDatasource {
       _activeChat = null;
     }
 
-    _activeChat = await model.createChat(
+    _activeChat = await model.openChat(
       modelType: modelType,
       supportImage: supportImage,
-      isThinking: enableThinking,
+      enableThinking: enableThinking,
       temperature: temperature,
       topK: topK,
+      topP: topP,
       systemInstruction: systemInstruction ?? AppConstants.systemInstruction,
     );
   }

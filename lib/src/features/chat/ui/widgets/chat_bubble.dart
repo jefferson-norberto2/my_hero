@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;

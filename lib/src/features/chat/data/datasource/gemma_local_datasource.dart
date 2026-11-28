@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
-import '../../../../core/constants/app_constants.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 
 abstract class GemmaLocalDatasource {
   PreferredBackend? get activeBackend;

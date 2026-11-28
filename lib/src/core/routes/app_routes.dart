@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import '../../features/chat/ui/pages/chat_page.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:my_hero/src/features/chat/ui/pages/chat_page.dart';
 
 class AppRoutes {
   static const String initial = '/';

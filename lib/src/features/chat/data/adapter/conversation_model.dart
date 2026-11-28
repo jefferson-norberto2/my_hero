@@ -1,7 +1,7 @@
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
-import '../../../../core/constants/app_constants.dart';
-import 'chat_message_adapter.dart';
-import 'response_style.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 
 class Conversation {
   final String id;

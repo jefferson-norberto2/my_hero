@@ -1,13 +1,13 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get_it/get_it.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../controller/chat_controller.dart';
-import '../widgets/chat_drawer.dart';
-import '../widgets/chat_input_bar.dart';
-import '../widgets/chat_message_list.dart';
-import '../widgets/model_selector_widget.dart';
-import '../widgets/model_switch_dialog.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/chat_drawer.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/chat_input_bar.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/chat_message_list.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/model_selector_widget.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/model_switch_dialog.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});

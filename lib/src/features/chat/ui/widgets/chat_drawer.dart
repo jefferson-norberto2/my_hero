@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../controller/chat_controller.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 
 class ChatDrawer extends StatelessWidget {
   final ChatController controller;

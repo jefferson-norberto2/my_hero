@@ -21,6 +21,7 @@ dependencies:
   signals_flutter: ^7.1.0
   url_launcher: ^6.3.3
 
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

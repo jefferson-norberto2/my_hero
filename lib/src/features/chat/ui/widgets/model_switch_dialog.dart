@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../controller/chat_controller.dart';
-import '../../data/adapter/response_style.dart';
-import 'model_catalog_list.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
+import 'package:my_hero/src/features/chat/ui/widgets/model_catalog_list.dart';
 
 class ModelSwitchDialog extends StatefulWidget {
   final ChatController controller;

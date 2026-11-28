@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../core/constants/app_constants.dart';
-import '../../../shared/services/inference_notification_service.dart';
-import '../../../shared/services/media_picker_service.dart';
-import '../data/adapter/chat_message_adapter.dart';
-import '../data/adapter/conversation_model.dart';
-import '../data/adapter/response_style.dart';
-import '../data/repository/chat_repository.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/shared/services/inference_notification_service.dart';
+import 'package:my_hero/src/shared/services/media_picker_service.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
 
 class ChatController {
   final ChatRepository _repository;

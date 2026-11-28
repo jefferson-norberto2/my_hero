@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import '../../../../core/constants/app_constants.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:my_hero/src/core/constants/app_constants.dart';
 
 class ModelCatalogList extends StatefulWidget {
   final List<AiModelSpec> models;

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import '../adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 
 abstract class ChatHistoryDatasource {
   Future<List<Conversation>> loadConversations();

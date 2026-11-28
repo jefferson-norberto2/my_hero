@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
-import '../adapter/chat_message_adapter.dart';
-import '../adapter/conversation_model.dart';
-import '../adapter/response_style.dart';
+import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
+import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 
 abstract class ChatRepository {
   PreferredBackend? get activeBackend;

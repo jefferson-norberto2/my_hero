@@ -1,11 +1,11 @@
 import 'package:get_it/get_it.dart';
-import '../../shared/services/inference_notification_service.dart';
-import '../../shared/services/media_picker_service.dart';
-import '../../features/chat/data/datasource/chat_history_datasource.dart';
-import '../../features/chat/data/datasource/gemma_local_datasource.dart';
-import '../../features/chat/data/repository/chat_repository.dart';
-import '../../features/chat/data/repository/chat_repository_impl.dart';
-import '../../features/chat/controller/chat_controller.dart';
+import 'package:my_hero/src/shared/services/inference_notification_service.dart';
+import 'package:my_hero/src/shared/services/media_picker_service.dart';
+import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
+import 'package:my_hero/src/features/chat/data/datasource/gemma_local_datasource.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/features/chat/data/repository/chat_repository_impl.dart';
+import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 
 final getIt = GetIt.instance;
 

@@ -30,6 +30,16 @@ void main() {
   setUp(() {
     mockGemmaDatasource = MockGemmaLocalDatasource();
     mockHistoryDatasource = MockChatHistoryDatasource();
+    when(() => mockGemmaDatasource.close()).thenAnswer((_) async {});
+    when(
+      () => mockGemmaDatasource.activateInstalledModel(
+        fileName: any(named: 'fileName'),
+        modelType: any(named: 'modelType'),
+        fileType: any(named: 'fileType'),
+      ),
+    ).thenAnswer((_) async {});
+    when(() => mockGemmaDatasource.cleanupStorage()).thenAnswer((_) async {});
+
     repository = ChatRepositoryImpl(
       gemmaDatasource: mockGemmaDatasource,
       historyDatasource: mockHistoryDatasource,
@@ -37,7 +47,7 @@ void main() {
   });
 
   group('ChatRepositoryImpl - loadModel', () {
-    test('should install model via catalog installer, create active model and openChat with responseStyle and thinking', () async {
+    test('should close active model, install via catalog when missing, create active model and openChat', () async {
       final recordedStatuses = <String>[];
       final recordedProgresses = <double>[];
 
@@ -87,12 +97,20 @@ void main() {
       expect(recordedProgresses, contains(0.5));
       expect(recordedProgresses, contains(1.0));
 
+      verify(() => mockGemmaDatasource.close()).called(1);
       verify(
         () => mockGemmaDatasource.installModelFromCatalog(
           variant: AppConstants.model2bCatalogVariant,
           onProgress: any(named: 'onProgress'),
         ),
       ).called(1);
+      verifyNever(
+        () => mockGemmaDatasource.activateInstalledModel(
+          fileName: any(named: 'fileName'),
+          modelType: any(named: 'modelType'),
+          fileType: any(named: 'fileType'),
+        ),
+      );
       verify(
         () => mockGemmaDatasource.createActiveModel(
           preferredBackend: PreferredBackend.gpu,
@@ -110,27 +128,21 @@ void main() {
       ).called(1);
     });
 
-    test('should clamp maxTokens and replay contextMessages when provided', () async {
+    test('should activate already-installed model directly without invoking installModelFromCatalog and respect supportImage=false', () async {
       when(() => mockGemmaDatasource.isModelInstalled(AppConstants.model4bFileName))
           .thenAnswer((_) async => true);
       when(
-        () => mockGemmaDatasource.installModelFromCatalog(
-          variant: AppConstants.model4bCatalogVariant,
-          onProgress: any(named: 'onProgress'),
-        ),
-      ).thenAnswer((_) async {});
-      when(
         () => mockGemmaDatasource.createActiveModel(
-          preferredBackend: PreferredBackend.npu,
+          preferredBackend: PreferredBackend.cpu,
           maxTokens: AppConstants.maxContextTokens,
-          supportImage: any(named: 'supportImage'),
+          supportImage: false,
         ),
       ).thenAnswer((_) async {});
       when(
         () => mockGemmaDatasource.openChat(
           modelType: ModelType.gemma4,
           systemInstruction: any(named: 'systemInstruction'),
-          supportImage: any(named: 'supportImage'),
+          supportImage: false,
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenAnswer((_) async {});
@@ -145,17 +157,32 @@ void main() {
 
       await repository.loadModel(
         is2B: false,
-        preferredBackend: PreferredBackend.npu,
-        maxTokens: 999999, // Deve ser limitado ao teto do modelo (32768)
+        preferredBackend: PreferredBackend.cpu,
+        maxTokens: 999999,
+        supportImage: false,
         onProgress: (progress, status) {},
         contextMessages: messages,
       );
 
+      verify(() => mockGemmaDatasource.close()).called(1);
+      verify(
+        () => mockGemmaDatasource.activateInstalledModel(
+          fileName: AppConstants.model4bFileName,
+          modelType: AppConstants.model4b.modelType,
+          fileType: AppConstants.model4b.fileType,
+        ),
+      ).called(1);
+      verifyNever(
+        () => mockGemmaDatasource.installModelFromCatalog(
+          variant: any(named: 'variant'),
+          onProgress: any(named: 'onProgress'),
+        ),
+      );
       verify(
         () => mockGemmaDatasource.createActiveModel(
-          preferredBackend: PreferredBackend.npu,
+          preferredBackend: PreferredBackend.cpu,
           maxTokens: AppConstants.maxContextTokens,
-          supportImage: true,
+          supportImage: false,
         ),
       ).called(1);
       verify(() => mockGemmaDatasource.addQueryChunk(any())).called(2);
@@ -250,8 +277,6 @@ void main() {
     });
 
     test('reset should await gemma datasource close', () async {
-      when(() => mockGemmaDatasource.close()).thenAnswer((_) async {});
-
       await repository.reset();
 
       verify(() => mockGemmaDatasource.close()).called(1);
@@ -425,7 +450,7 @@ void main() {
       expect((captured.single as Message).imageBytes, isNull);
     });
 
-    test('getInstalledModelFileNames and uninstallModel should delegate to datasource', () async {
+    test('getInstalledModelFileNames, uninstallModel and cleanupStorage should delegate to datasource', () async {
       when(() => mockGemmaDatasource.listInstalledModels()).thenAnswer(
         (_) async => [AppConstants.model2bFileName, 'Qwen3-0.6B_dynamic_wi4b32_afp32.litertlm'],
       );
@@ -439,6 +464,9 @@ void main() {
       await repository.uninstallModel(AppConstants.model2bFileName);
       verify(() => mockGemmaDatasource.uninstallModel(AppConstants.model2bFileName))
           .called(1);
+
+      await repository.cleanupStorage();
+      verify(() => mockGemmaDatasource.cleanupStorage()).called(1);
     });
   });
 }

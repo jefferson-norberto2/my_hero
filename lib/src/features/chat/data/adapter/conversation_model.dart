@@ -11,6 +11,7 @@ class Conversation {
   PreferredBackend preferredBackend;
   int maxTokens;
   bool enableThinking;
+  bool enableVision;
   ResponseStyle responseStyle;
   final DateTime createdAt;
   DateTime updatedAt;
@@ -25,16 +26,18 @@ class Conversation {
     bool? useCpu,
     int? maxTokens,
     this.enableThinking = false,
+    this.enableVision = true,
     this.responseStyle = ResponseStyle.simple,
     required this.createdAt,
     required this.updatedAt,
-  })  : modelId = _resolveModelId(modelId: modelId, is2B: is2B),
-        preferredBackend = preferredBackend ??
-            ((useCpu ?? true) ? PreferredBackend.cpu : PreferredBackend.gpu),
-        maxTokens = AppConstants.clampMaxTokens(
-          maxTokens ?? AppConstants.defaultMaxTokensForPlatform(),
-          modelId: _resolveModelId(modelId: modelId, is2B: is2B),
-        );
+  }) : modelId = _resolveModelId(modelId: modelId, is2B: is2B),
+       preferredBackend =
+           preferredBackend ??
+           ((useCpu ?? true) ? PreferredBackend.cpu : PreferredBackend.gpu),
+       maxTokens = AppConstants.clampMaxTokens(
+         maxTokens ?? AppConstants.defaultMaxTokensForPlatform(),
+         modelId: _resolveModelId(modelId: modelId, is2B: is2B),
+       );
 
   static String _resolveModelId({String? modelId, bool? is2B}) {
     if (modelId != null && modelId.isNotEmpty) {
@@ -62,6 +65,7 @@ class Conversation {
     PreferredBackend? preferredBackend,
     int? maxTokens,
     bool? enableThinking,
+    bool? enableVision,
     ResponseStyle? responseStyle,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -76,6 +80,7 @@ class Conversation {
       preferredBackend: preferredBackend ?? this.preferredBackend,
       maxTokens: maxTokens ?? this.maxTokens,
       enableThinking: enableThinking ?? this.enableThinking,
+      enableVision: enableVision ?? this.enableVision,
       responseStyle: responseStyle ?? this.responseStyle,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -93,6 +98,7 @@ class Conversation {
       'useCpu': useCpu,
       'maxTokens': maxTokens,
       'enableThinking': enableThinking,
+      'enableVision': enableVision,
       'responseStyle': responseStyle.name,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -126,6 +132,7 @@ class Conversation {
       preferredBackend: _parseBackend(json),
       maxTokens: rawMaxTokens,
       enableThinking: json['enableThinking'] as bool? ?? false,
+      enableVision: json['enableVision'] as bool? ?? true,
       responseStyle:
           ResponseStyle.fromString(json['responseStyle'] as String?),
       createdAt: json['createdAt'] != null

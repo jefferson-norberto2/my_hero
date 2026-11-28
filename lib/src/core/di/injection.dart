@@ -1,4 +1,5 @@
 import 'package:get_it/get_it.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 import 'package:my_hero/src/shared/services/inference_notification_service.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 import 'package:my_hero/src/features/chat/data/datasource/chat_history_datasource.dart';
@@ -14,6 +15,9 @@ Future<void> setupDependencies() async {
   getIt.registerLazySingleton<MediaPickerService>(() => MediaPickerService());
   getIt.registerLazySingleton<InferenceNotificationService>(
     () => PlatformInferenceNotificationService(),
+  );
+  getIt.registerLazySingleton<DeviceResourcesService>(
+    () => PlatformDeviceResourcesService(),
   );
 
   // Features - Chat - Data
@@ -36,6 +40,7 @@ Future<void> setupDependencies() async {
       repository: getIt<ChatRepository>(),
       mediaPickerService: getIt<MediaPickerService>(),
       inferenceNotificationService: getIt<InferenceNotificationService>(),
+      deviceResourcesService: getIt<DeviceResourcesService>(),
     ),
   );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 
 class AiModelSpec {
   final String id;
@@ -186,7 +187,7 @@ class AppConstants {
   static int defaultMaxTokensForPlatform([TargetPlatform? platform]) {
     final effective = platform ?? defaultTargetPlatform;
     return switch (effective) {
-      TargetPlatform.android || TargetPlatform.iOS => 4096,
+      TargetPlatform.android || TargetPlatform.iOS => 2048,
       TargetPlatform.linux ||
       TargetPlatform.windows ||
       TargetPlatform.macOS ||
@@ -212,6 +213,119 @@ class AppConstants {
       PreferredBackend.gpu,
       if (supportsNpuOnPlatform(platform)) PreferredBackend.npu,
     ];
+  }
+
+  /// Backends suportados pelo [spec] na plataforma atual, respeitando
+  /// [InferenceVariant.backendsHere] (ex.: `TranslateGemma 4B` restringe GPU,
+  /// e bundles genéricos não compilam para NPU).
+  static List<PreferredBackend> availableBackendsForModel(
+    AiModelSpec spec, [
+    TargetPlatform? platform,
+  ]) {
+    final platformBackends = availableBackendsForPlatform(platform);
+    final supportedByModel = spec.catalogVariant.backendsHere;
+    if (supportedByModel.isEmpty) {
+      return platformBackends;
+    }
+
+    final filtered = [
+      for (final backend in platformBackends)
+        if (supportedByModel.contains(backend)) backend,
+    ];
+    if (filtered.isNotEmpty) {
+      return filtered;
+    }
+    return const [PreferredBackend.cpu];
+  }
+
+  static PreferredBackend defaultBackendForModel(
+    AiModelSpec spec, [
+    TargetPlatform? platform,
+  ]) {
+    final available = availableBackendsForModel(spec, platform);
+    if (available.contains(PreferredBackend.cpu)) {
+      return PreferredBackend.cpu;
+    }
+    return available.first;
+  }
+
+  static int requiredFreeStorageBytesForDownload(AiModelSpec spec) {
+    const baseMargin = 512 * 1024 * 1024;
+    if (spec.sizeBytes <= 0) return baseMargin;
+    return (spec.sizeBytes * 1.4).round() + baseMargin;
+  }
+
+  static int estimateModelRamBytes(
+    AiModelSpec spec, {
+    required int maxTokens,
+    required bool enableVision,
+  }) {
+    final weightsOverhead = (spec.sizeBytes * 1.25).round();
+    final kvCacheOverhead = maxTokens * 64 * 1024;
+    final visionOverhead =
+        (spec.supportsImage && enableVision) ? 512 * 1024 * 1024 : 0;
+    const runtimeBase = 350 * 1024 * 1024;
+    return weightsOverhead + kvCacheOverhead + visionOverhead + runtimeBase;
+  }
+
+  static ModelMemoryAssessment assessModelMemory(
+    AiModelSpec spec, {
+    required int maxTokens,
+    required bool enableVision,
+    required DeviceResourcesInfo? resources,
+  }) {
+    final estimated = estimateModelRamBytes(
+      spec,
+      maxTokens: maxTokens,
+      enableVision: enableVision,
+    );
+    if (resources == null || !resources.hasRamInfo) {
+      return ModelMemoryAssessment(
+        risk: ModelMemoryRisk.unknown,
+        estimatedRequiredRamBytes: estimated,
+      );
+    }
+
+    final estimatedStr = formatBytes(estimated);
+    final totalStr = formatBytes(resources.totalRamBytes);
+    final availStr = resources.availableRamBytes > 0
+        ? formatBytes(resources.availableRamBytes)
+        : null;
+    final ramDetails = availStr != null
+        ? 'estimado: ~$estimatedStr • RAM livre: $availStr de $totalStr'
+        : 'estimado: ~$estimatedStr • RAM total: $totalStr';
+
+    final isHighRisk = resources.lowMemory ||
+        estimated >= (resources.totalRamBytes * 0.78) ||
+        (resources.availableRamBytes > 0 &&
+            estimated > (resources.availableRamBytes * 1.35));
+
+    if (isHighRisk) {
+      return ModelMemoryAssessment(
+        risk: ModelMemoryRisk.high,
+        estimatedRequiredRamBytes: estimated,
+        message:
+            'Alto risco de erro de memória no Android ($ramDetails). Reduza os tokens para 1K–2K, desative o suporte a imagens ou escolha um modelo menor.',
+      );
+    }
+
+    final isWarningRisk = estimated >= (resources.totalRamBytes * 0.58) ||
+        (resources.availableRamBytes > 0 &&
+            estimated > (resources.availableRamBytes * 0.95));
+
+    if (isWarningRisk) {
+      return ModelMemoryAssessment(
+        risk: ModelMemoryRisk.warning,
+        estimatedRequiredRamBytes: estimated,
+        message:
+            'Memória RAM justa para ${spec.displayName} ($ramDetails). Se falhar ao carregar, tente 1K–2K tokens ou desative a visão.',
+      );
+    }
+
+    return ModelMemoryAssessment(
+      risk: ModelMemoryRisk.safe,
+      estimatedRequiredRamBytes: estimated,
+    );
   }
 
   /// `image_picker` não oferece captura de câmera nativa no Linux/Windows/macOS.

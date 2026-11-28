@@ -6,6 +6,7 @@ import 'package:signals_flutter/signals_flutter.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/model_catalog_list.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 
 class ModelSelectorWidget extends StatelessWidget {
   final ChatController controller;
@@ -35,10 +36,15 @@ class ModelSelectorWidget extends StatelessWidget {
         final deletingFile = controller.deletingModelFileName.value;
         final selectedSpec = controller.currentModelSpec;
         final isSelectedInstalled = installedFiles.contains(selectedSpec.fileName);
-        final selectedBackend = controller.selectedBackend.value;
         final availableBackends = controller.availableBackends;
+        final selectedBackend = availableBackends.contains(controller.selectedBackend.value)
+            ? controller.selectedBackend.value
+            : availableBackends.first;
         final currentMaxTokens = controller.maxTokens.value;
         final enableThinking = controller.enableThinking.value;
+        final enableVision = controller.enableVision.value;
+        final memoryAssessment = controller.currentMemoryAssessment;
+        final resources = controller.deviceResources.value;
         final progress = controller.downloadProgress.value;
         final status = controller.loadingStatus.value;
 
@@ -64,7 +70,45 @@ class ModelSelectorWidget extends StatelessWidget {
                 onSelect: (spec) => controller.selectModel(spec.id),
                 onDelete: controller.uninstallModel,
               ),
-              const SizedBox(height: 14),
+              if (resources != null &&
+                  (resources.hasRamInfo || resources.hasStorageInfo)) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (resources.hasRamInfo)
+                      Text(
+                        'RAM livre: ${AppConstants.formatBytes(resources.availableRamBytes)} / ${AppConstants.formatBytes(resources.totalRamBytes)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    if (resources.hasStorageInfo)
+                      Text(
+                        'Espaço livre: ${AppConstants.formatBytes(resources.freeStorageBytes)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    TextButton.icon(
+                      onPressed: isLoading ? null : controller.cleanupStorage,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      icon: const Icon(Icons.cleaning_services_outlined, size: 15),
+                      label: const Text(
+                        'Limpar temporários',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
               SegmentedButton<PreferredBackend>(
                 segments: availableBackends
                     .map(
@@ -114,6 +158,7 @@ class ModelSelectorWidget extends StatelessWidget {
                 }).toList(),
               ),
               if (selectedSpec.supportsImage &&
+                  enableVision &&
                   currentMaxTokens < AppConstants.recommendedMinVisionTokens) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -132,6 +177,25 @@ class ModelSelectorWidget extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 8),
+              if (selectedSpec.supportsImage)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: SwitchListTile.adaptive(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    secondary: const Icon(
+                      Icons.image_outlined,
+                      color: Colors.teal,
+                    ),
+                    title: const Text('Suporte a imagens (Visão)'),
+                    subtitle: const Text(
+                      'Carrega o encoder visual (+RAM). Desative para modo somente texto com menos memória.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: enableVision,
+                    onChanged: isLoading ? null : controller.setEnableVision,
+                  ),
+                ),
               if (selectedSpec.supportsThinking)
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
@@ -161,6 +225,11 @@ class ModelSelectorWidget extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (memoryAssessment.risk == ModelMemoryRisk.warning ||
+                  memoryAssessment.risk == ModelMemoryRisk.high) ...[
+                const SizedBox(height: 8),
+                _MemoryRiskBanner(assessment: memoryAssessment),
+              ],
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: isLoading
@@ -209,6 +278,53 @@ class ModelSelectorWidget extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _MemoryRiskBanner extends StatelessWidget {
+  final ModelMemoryAssessment assessment;
+
+  const _MemoryRiskBanner({required this.assessment});
+
+  @override
+  Widget build(BuildContext context) {
+    final isHigh = assessment.risk == ModelMemoryRisk.high;
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor =
+        isHigh ? colorScheme.error : Colors.amber.shade700;
+    final bgColor = isHigh
+        ? colorScheme.errorContainer.withValues(alpha: 0.45)
+        : Colors.amber.shade50;
+    final textColor = isHigh ? colorScheme.error : Colors.amber.shade900;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              isHigh ? Icons.warning_amber_rounded : Icons.info_outline_rounded,
+              size: 18,
+              color: textColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                assessment.message ?? '',
+                style: TextStyle(fontSize: 12, color: textColor),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

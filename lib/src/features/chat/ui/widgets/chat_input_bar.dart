@@ -180,11 +180,13 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 IconButton(
                   onPressed: canAttachImage ? _handleMediaButtonTap : null,
                   color: Colors.teal,
-                  tooltip: !supportsImage
+                  tooltip: !widget.controller.modelSupportsImage
                       ? 'Este modelo não suporta imagens'
-                      : (widget.controller.supportsCamera
-                          ? 'Anexar imagem (Galeria ou Câmera)'
-                          : 'Anexar imagem'),
+                      : (!supportsImage
+                          ? 'Suporte a imagens desativado nas configurações para economizar RAM'
+                          : (widget.controller.supportsCamera
+                              ? 'Anexar imagem (Galeria ou Câmera)'
+                              : 'Anexar imagem')),
                   icon: const Icon(Icons.add_photo_alternate_rounded),
                 ),
                 const SizedBox(width: 8),

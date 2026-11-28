@@ -7,6 +7,7 @@ import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/ui/widgets/model_catalog_list.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 
 class ModelSwitchDialog extends StatefulWidget {
   final ChatController controller;
@@ -29,6 +30,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
   late PreferredBackend _selectedBackend;
   late int _selectedMaxTokens;
   late bool _selectedEnableThinking;
+  late bool _selectedEnableVision;
   late ResponseStyle _selectedResponseStyle;
 
   @override
@@ -38,6 +40,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
     _selectedBackend = widget.controller.selectedBackend.value;
     _selectedMaxTokens = widget.controller.maxTokens.value;
     _selectedEnableThinking = widget.controller.enableThinking.value;
+    _selectedEnableVision = widget.controller.enableVision.value;
     _selectedResponseStyle = widget.controller.responseStyle.value;
   }
 
@@ -52,8 +55,11 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final availableBackends = widget.controller.availableBackends;
     final modelSpec = AppConstants.modelSpecById(_selectedModelId);
+    final availableBackends = widget.controller.availableBackendsForModel(modelSpec);
+    final effectiveBackend = availableBackends.contains(_selectedBackend)
+        ? _selectedBackend
+        : availableBackends.first;
     final isMobile = defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
 
@@ -77,6 +83,11 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
               final loadedModelId = widget.controller.loadedModelId.value;
               final deletingFile =
                   widget.controller.deletingModelFileName.value;
+              final memoryAssessment = widget.controller.memoryAssessmentFor(
+                spec: modelSpec,
+                maxTokens: _selectedMaxTokens,
+                enableVision: _selectedEnableVision,
+              );
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -97,6 +108,14 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                     onSelect: (spec) {
                       setState(() {
                         _selectedModelId = spec.id;
+                        final nextBackends =
+                            widget.controller.availableBackendsForModel(spec);
+                        if (!nextBackends.contains(_selectedBackend)) {
+                          _selectedBackend =
+                              nextBackends.contains(PreferredBackend.gpu)
+                                  ? PreferredBackend.gpu
+                                  : nextBackends.first;
+                        }
                         _selectedMaxTokens = AppConstants.clampMaxTokens(
                           _selectedMaxTokens,
                           modelId: spec.id,
@@ -124,12 +143,12 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                           ),
                         )
                         .toList(),
-                    selected: {_selectedBackend},
+                    selected: {effectiveBackend},
                     onSelectionChanged: (newSelection) {
                       setState(() => _selectedBackend = newSelection.first);
                     },
                   ),
-                  if (_selectedBackend == PreferredBackend.npu) ...[
+                  if (effectiveBackend == PreferredBackend.npu) ...[
                     const SizedBox(height: 6),
                     Text(
                       'NPU requer dispositivo compatível (Snapdragon / Google Tensor / Intel NPU) e variante NPU; em bundles genéricos, o runtime faz fallback automático para GPU/CPU.',
@@ -167,6 +186,27 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                     ),
                   ],
                   const SizedBox(height: 12),
+                  if (modelSpec.supportsImage)
+                    SwitchListTile.adaptive(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(
+                        Icons.image_outlined,
+                        color: Colors.teal,
+                      ),
+                      title: const Text(
+                        'Suporte a imagens (Visão)',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: const Text(
+                        'Desative para carregar em modo somente texto e economizar RAM',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      value: _selectedEnableVision,
+                      onChanged: (value) {
+                        setState(() => _selectedEnableVision = value);
+                      },
+                    ),
                   if (modelSpec.supportsThinking)
                     SwitchListTile.adaptive(
                       dense: true,
@@ -195,6 +235,52 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                  if (memoryAssessment.risk == ModelMemoryRisk.warning ||
+                      memoryAssessment.risk == ModelMemoryRisk.high) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: memoryAssessment.risk == ModelMemoryRisk.high
+                            ? theme.colorScheme.errorContainer
+                                .withValues(alpha: 0.45)
+                            : Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: memoryAssessment.risk == ModelMemoryRisk.high
+                              ? theme.colorScheme.error.withValues(alpha: 0.7)
+                              : Colors.amber.shade700.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            memoryAssessment.risk == ModelMemoryRisk.high
+                                ? Icons.warning_amber_rounded
+                                : Icons.info_outline_rounded,
+                            size: 18,
+                            color: memoryAssessment.risk == ModelMemoryRisk.high
+                                ? theme.colorScheme.error
+                                : Colors.amber.shade900,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              memoryAssessment.message ?? '',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: memoryAssessment.risk ==
+                                        ModelMemoryRisk.high
+                                    ? theme.colorScheme.error
+                                    : Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   const Text(
                     'Estilo de Resposta:',
@@ -249,7 +335,7 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'O contexto desta conversa será mantido. Alterar modelo, backend ou janela de contexto recarrega (ou baixa) o modelo; estilo e thinking aplicam instantaneamente.',
+                            'O contexto desta conversa será mantido. Alterar modelo, backend, janela de contexto ou visão recarrega (ou baixa) o modelo; estilo e thinking aplicam instantaneamente.',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.black87,
@@ -275,9 +361,10 @@ class _ModelSwitchDialogState extends State<ModelSwitchDialog> {
             Navigator.of(context).pop();
             widget.controller.updateConversationSettings(
               modelId: _selectedModelId,
-              preferredBackend: _selectedBackend,
+              preferredBackend: effectiveBackend,
               maxTokens: _selectedMaxTokens,
               enableThinking: _selectedEnableThinking,
+              enableVision: _selectedEnableVision,
               newResponseStyle: _selectedResponseStyle,
             );
           },

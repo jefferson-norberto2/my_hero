@@ -13,6 +13,8 @@ abstract class ChatRepository {
 
   Future<void> uninstallModel(String modelFileName);
 
+  Future<void> cleanupStorage();
+
   Future<void> loadModel({
     String? modelId,
     bool is2B = true,

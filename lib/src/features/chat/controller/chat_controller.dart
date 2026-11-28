@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show TargetPlatform;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter_edge_ai/flutter_edge_ai.dart';
 import 'package:flutter_edge_ai_litertlm/flutter_edge_ai_litertlm.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 import 'package:my_hero/src/shared/services/inference_notification_service.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
@@ -16,16 +17,20 @@ class ChatController {
   final ChatRepository _repository;
   final MediaPickerService _mediaPickerService;
   final InferenceNotificationService _inferenceNotificationService;
+  final DeviceResourcesService _deviceResourcesService;
   final TargetPlatform? _platformOverride;
 
   ChatController({
     required this._repository,
     required this._mediaPickerService,
     InferenceNotificationService? inferenceNotificationService,
+    DeviceResourcesService? deviceResourcesService,
     TargetPlatform? platform,
   })  : _inferenceNotificationService =
             inferenceNotificationService ??
             const NoopInferenceNotificationService(),
+        _deviceResourcesService =
+            deviceResourcesService ?? const NoopDeviceResourcesService(),
         _platformOverride = platform,
         maxTokens = signal<int>(
           AppConstants.defaultMaxTokensForPlatform(platform),
@@ -47,10 +52,12 @@ class ChatController {
   final activeBackend = signal<PreferredBackend?>(null);
   final Signal<int> maxTokens;
   final enableThinking = signal<bool>(false);
+  final enableVision = signal<bool>(true);
   final responseStyle = signal<ResponseStyle>(ResponseStyle.simple);
   final chatHistory = signal<List<ChatMessage>>([]);
   final errorMessage = signal<String?>(null);
   final attachedImage = signal<Uint8List?>(null);
+  final deviceResources = signal<DeviceResourcesInfo?>(null);
 
   // Histórico de conversas
   final conversations = signal<List<Conversation>>([]);
@@ -58,10 +65,16 @@ class ChatController {
 
   bool _stopGenerationFlag = false;
 
+  TargetPlatform get _effectivePlatform =>
+      _platformOverride ?? defaultTargetPlatform;
+
   List<AiModelSpec> get availableModels => AppConstants.availableModels;
 
   List<PreferredBackend> get availableBackends =>
-      AppConstants.availableBackendsForPlatform(_platformOverride);
+      availableBackendsForModel(currentModelSpec);
+
+  List<PreferredBackend> availableBackendsForModel(AiModelSpec spec) =>
+      AppConstants.availableBackendsForModel(spec, _platformOverride);
 
   bool get supportsNpu =>
       AppConstants.supportsNpuOnPlatform(_platformOverride);
@@ -77,9 +90,11 @@ class ChatController {
   AiModelSpec get activeLoadedModelSpec =>
       AppConstants.modelSpecById(loadedModelId.value ?? selectedModelId.value);
 
-  bool get supportsImage =>
+  bool get modelSupportsImage =>
       (isModelLoaded.value ? activeLoadedModelSpec : currentModelSpec)
           .supportsImage;
+
+  bool get supportsImage => modelSupportsImage && enableVision.value;
 
   bool get supportsThinking => currentModelSpec.supportsThinking;
 
@@ -93,6 +108,25 @@ class ChatController {
   int get minSupportedContextTokens => currentModelSpec.minContextTokens;
 
   int get maxSupportedContextTokens => currentModelSpec.maxContextTokens;
+
+  ModelMemoryAssessment memoryAssessmentFor({
+    required AiModelSpec spec,
+    required int maxTokens,
+    required bool enableVision,
+  }) {
+    return AppConstants.assessModelMemory(
+      spec,
+      maxTokens: maxTokens,
+      enableVision: enableVision,
+      resources: deviceResources.value,
+    );
+  }
+
+  ModelMemoryAssessment get currentMemoryAssessment => memoryAssessmentFor(
+    spec: currentModelSpec,
+    maxTokens: maxTokens.value,
+    enableVision: enableVision.value,
+  );
 
   String get backendDisplaySummary {
     final requested = selectedBackend.value;
@@ -113,18 +147,30 @@ class ChatController {
     }
   }
 
-  PreferredBackend _normalizeBackendForPlatform(PreferredBackend backend) {
-    final available = availableBackends;
+  PreferredBackend _normalizeBackendForModel(
+    PreferredBackend backend, [
+    AiModelSpec? spec,
+  ]) {
+    final available = availableBackendsForModel(spec ?? currentModelSpec);
     if (available.contains(backend)) return backend;
     if (available.contains(PreferredBackend.gpu)) return PreferredBackend.gpu;
-    return PreferredBackend.cpu;
+    return available.first;
   }
 
   Future<void> init() async {
     await Future.wait([
-      loadSavedConversations(),
+      refreshDeviceResources(),
       refreshInstalledModels(),
     ]);
+    await loadSavedConversations();
+  }
+
+  Future<void> refreshDeviceResources() async {
+    try {
+      deviceResources.value = await _deviceResourcesService.getDeviceResources();
+    } catch (_) {
+      // Falha na telemetria nunca deve bloquear a inicialização
+    }
   }
 
   Future<void> refreshInstalledModels() async {
@@ -136,6 +182,29 @@ class ChatController {
     }
   }
 
+  Future<void> cleanupStorage() async {
+    try {
+      await _repository.cleanupStorage();
+      await Future.wait([
+        refreshInstalledModels(),
+        refreshDeviceResources(),
+      ]);
+    } catch (e) {
+      errorMessage.value = 'Falha ao limpar arquivos temporários: $e';
+    }
+  }
+
+  void _applySafeDeviceDefaultsIfLowRam() {
+    final resources = deviceResources.value;
+    if (resources != null && resources.isLowRamDevice) {
+      maxTokens.value = AppConstants.clampMaxTokens(
+        1024,
+        modelId: currentModelSpec.id,
+      );
+      enableVision.value = false;
+    }
+  }
+
   Future<void> loadSavedConversations() async {
     try {
       final saved = await _repository.getConversations();
@@ -143,9 +212,11 @@ class ChatController {
         conversations.value = saved;
         await selectConversation(saved.first.id);
       } else {
+        _applySafeDeviceDefaultsIfLowRam();
         await createNewConversation();
       }
     } catch (_) {
+      _applySafeDeviceDefaultsIfLowRam();
       await createNewConversation();
     }
   }
@@ -155,14 +226,16 @@ class ChatController {
     final now = DateTime.now();
     final spec = currentModelSpec;
     final effectiveThinking = enableThinking.value && spec.supportsThinking;
+    final effectiveVision = enableVision.value && spec.supportsImage;
     final newConv = Conversation(
       id: now.millisecondsSinceEpoch.toString(),
       title: 'Nova Conversa',
       messages: [],
       modelId: spec.id,
-      preferredBackend: _normalizeBackendForPlatform(selectedBackend.value),
+      preferredBackend: _normalizeBackendForModel(selectedBackend.value, spec),
       maxTokens: maxTokens.value,
       enableThinking: effectiveThinking,
+      enableVision: effectiveVision,
       responseStyle: responseStyle.value,
       createdAt: now,
       updatedAt: now,
@@ -178,6 +251,8 @@ class ChatController {
           modelId: loadedModelId.value ?? spec.id,
           contextMessages: null,
           responseStyle: responseStyle.value,
+          supportImage:
+              activeLoadedModelSpec.supportsImage && enableVision.value,
           enableThinking: effectiveThinking,
         );
       } catch (_) {}
@@ -194,13 +269,16 @@ class ChatController {
     if (conv == null) return;
 
     final spec = AppConstants.modelSpecById(conv.modelId);
-    final normalizedBackend =
-        _normalizeBackendForPlatform(conv.preferredBackend);
+    final normalizedBackend = _normalizeBackendForModel(
+      conv.preferredBackend,
+      spec,
+    );
     final clampedTokens = AppConstants.clampMaxTokens(
       conv.maxTokens,
       modelId: spec.id,
     );
     final effectiveThinking = conv.enableThinking && spec.supportsThinking;
+    final effectiveVision = conv.enableVision && spec.supportsImage;
 
     currentConversationId.value = conv.id;
     chatHistory.value = List.from(conv.messages);
@@ -208,9 +286,10 @@ class ChatController {
     selectedBackend.value = normalizedBackend;
     maxTokens.value = clampedTokens;
     enableThinking.value = effectiveThinking;
+    enableVision.value = conv.enableVision;
     responseStyle.value = conv.responseStyle;
 
-    if (!spec.supportsImage) {
+    if (!effectiveVision) {
       attachedImage.value = null;
     }
 
@@ -220,6 +299,8 @@ class ChatController {
           modelId: loadedModelId.value ?? spec.id,
           contextMessages: conv.messages,
           responseStyle: conv.responseStyle,
+          supportImage:
+              activeLoadedModelSpec.supportsImage && enableVision.value,
           enableThinking: effectiveThinking,
         );
       } catch (_) {}
@@ -246,6 +327,10 @@ class ChatController {
   void selectModel(String modelId) {
     if (isLoading.value) return;
     final spec = AppConstants.modelSpecById(modelId);
+    final normalizedBackend = _normalizeBackendForModel(
+      selectedBackend.value,
+      spec,
+    );
     final clampedTokens = AppConstants.clampMaxTokens(
       maxTokens.value,
       modelId: spec.id,
@@ -253,15 +338,17 @@ class ChatController {
     final effectiveThinking = enableThinking.value && spec.supportsThinking;
 
     selectedModelId.value = spec.id;
+    selectedBackend.value = normalizedBackend;
     maxTokens.value = clampedTokens;
     enableThinking.value = effectiveThinking;
-    if (!spec.supportsImage) {
+    if (!spec.supportsImage || !enableVision.value) {
       attachedImage.value = null;
     }
 
     final conv = currentConversation;
     if (conv != null) {
       conv.modelId = spec.id;
+      conv.preferredBackend = normalizedBackend;
       conv.maxTokens = clampedTokens;
       conv.enableThinking = effectiveThinking;
       _saveCurrentState();
@@ -270,7 +357,7 @@ class ChatController {
 
   void selectBackend(PreferredBackend backend) {
     if (isLoading.value) return;
-    final normalized = _normalizeBackendForPlatform(backend);
+    final normalized = _normalizeBackendForModel(backend);
     selectedBackend.value = normalized;
 
     final conv = currentConversation;
@@ -307,6 +394,20 @@ class ChatController {
     }
   }
 
+  void setEnableVision(bool enabled) {
+    if (isLoading.value) return;
+    enableVision.value = enabled;
+    if (!enabled) {
+      attachedImage.value = null;
+    }
+
+    final conv = currentConversation;
+    if (conv != null) {
+      conv.enableVision = enabled;
+      _saveCurrentState();
+    }
+  }
+
   void cancelDownload() {
     if (!isLoading.value) return;
     loadingStatus.value = 'Cancelando download...';
@@ -338,7 +439,10 @@ class ChatController {
         activeBackend.value = null;
       }
 
-      await refreshInstalledModels();
+      await Future.wait([
+        refreshInstalledModels(),
+        refreshDeviceResources(),
+      ]);
       // Garante remoção otimista caso o mock/repositório não retorne nova lista
       if (installedModelFiles.value.contains(spec.fileName)) {
         final next = Set<String>.from(installedModelFiles.value)
@@ -360,6 +464,7 @@ class ChatController {
     PreferredBackend? preferredBackend,
     int? maxTokens,
     bool? enableThinking,
+    bool? enableVision,
   }) async {
     isLoading.value = true;
     downloadProgress.value = 0.0;
@@ -371,8 +476,9 @@ class ChatController {
             ? AppConstants.modelSpec(is2B: is2B).id
             : selectedModelId.value);
     final spec = AppConstants.modelSpecById(resolvedModelId);
-    final targetBackend = _normalizeBackendForPlatform(
+    final targetBackend = _normalizeBackendForModel(
       preferredBackend ?? selectedBackend.value,
+      spec,
     );
     final targetMaxTokens = AppConstants.clampMaxTokens(
       maxTokens ?? this.maxTokens.value,
@@ -380,9 +486,28 @@ class ChatController {
     );
     final targetThinking =
         (enableThinking ?? this.enableThinking.value) && spec.supportsThinking;
+    final requestedVision = enableVision ?? this.enableVision.value;
+    final targetVision = requestedVision && spec.supportsImage;
     final targetStyle = responseStyle ?? this.responseStyle.value;
 
+    var startedLoadNotification = false;
+
     try {
+      await refreshDeviceResources();
+      final resources = deviceResources.value;
+      if (!isModelInstalled(spec) &&
+          resources != null &&
+          resources.hasStorageInfo) {
+        final requiredBytes =
+            AppConstants.requiredFreeStorageBytesForDownload(spec);
+        if (resources.freeStorageBytes < requiredBytes) {
+          loadingStatus.value = '';
+          errorMessage.value =
+              'Espaço insuficiente para baixar ${spec.displayName}. Necessário cerca de ${AppConstants.formatBytes(requiredBytes)} livres (disponível: ${AppConstants.formatBytes(resources.freeStorageBytes)}). Libere espaço ou exclua modelos antigos.';
+          return;
+        }
+      }
+
       final messagesToSync = contextMessages ?? chatHistory.value;
 
       await _repository.loadModel(
@@ -393,9 +518,19 @@ class ChatController {
         onProgress: (progress, status) {
           downloadProgress.value = progress;
           loadingStatus.value = status;
+          if (!startedLoadNotification && status.startsWith('Carregando ')) {
+            startedLoadNotification = true;
+            unawaited(
+              _inferenceNotificationService.start(
+                title: 'My Hero • ${spec.displayName}',
+                body: 'Carregando modelo na memória...',
+              ),
+            );
+          }
         },
         contextMessages: messagesToSync,
         responseStyle: targetStyle,
+        supportImage: targetVision,
         enableThinking: targetThinking,
       );
 
@@ -407,19 +542,18 @@ class ChatController {
       activeBackend.value = actualBackend;
       this.maxTokens.value = targetMaxTokens;
       this.enableThinking.value = targetThinking;
+      this.enableVision.value = requestedVision;
       this.responseStyle.value = targetStyle;
-      if (!spec.supportsImage) {
+      if (!targetVision) {
         attachedImage.value = null;
       }
       isModelLoaded.value = true;
-      isLoading.value = false;
 
       // Marca como instalado imediatamente e sincroniza com o armazenamento
       installedModelFiles.value = Set<String>.unmodifiable({
         ...installedModelFiles.value,
         spec.fileName,
       });
-      unawaited(refreshInstalledModels());
 
       final conv = currentConversation;
       if (conv != null) {
@@ -427,14 +561,17 @@ class ChatController {
         conv.preferredBackend = targetBackend;
         conv.maxTokens = targetMaxTokens;
         conv.enableThinking = targetThinking;
+        conv.enableVision = requestedVision;
         conv.responseStyle = targetStyle;
-        _saveCurrentState();
       }
 
       final backendNote = actualBackend == targetBackend
           ? AppConstants.backendLabel(actualBackend)
           : '${AppConstants.backendLabel(targetBackend)} → ${AppConstants.backendLabel(actualBackend)} (fallback)';
       final thinkingNote = targetThinking ? ' • Thinking ativo' : '';
+      final visionNote = spec.supportsImage && !targetVision
+          ? ' • Somente texto'
+          : '';
       final contextNote = messagesToSync.isNotEmpty
           ? ' Contexto sincronizado'
           : '';
@@ -443,23 +580,27 @@ class ChatController {
         ...chatHistory.value,
         ChatMessage(
           text:
-              'Sistema: Modelo ${spec.displayName} carregado ($backendNote • ${AppConstants.formatTokenCount(targetMaxTokens)} tokens$thinkingNote • ${targetStyle.label}).$contextNote',
+              'Sistema: Modelo ${spec.displayName} carregado ($backendNote • ${AppConstants.formatTokenCount(targetMaxTokens)} tokens$thinkingNote$visionNote • ${targetStyle.label}).$contextNote',
           isUser: false,
         ),
       ];
       _syncMessagesToCurrentConversation();
       await _saveCurrentState();
     } on DownloadCancelledException {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
       errorMessage.value = 'Download cancelado pelo usuário.';
     } on DownloadException catch (e) {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
+      final isLargeAndroidDownload =
+          _effectivePlatform == TargetPlatform.android &&
+          spec.sizeBytes >= 1024 * 1024 * 1024;
       errorMessage.value = switch (e.error) {
         CanceledError() => 'Download cancelado pelo usuário.',
-        NetworkError(:final message) =>
-          'Erro de conexão durante o download ($message). Verifique sua internet e tente novamente.',
+        NetworkError(:final message) => isLargeAndroidDownload
+            ? 'Erro de conexão durante o download ($message). Verifique sua internet e mantenha o Wi-Fi estável (downloads no Hugging Face reiniciam do zero se houver queda).'
+            : 'Erro de conexão durante o download ($message). Verifique sua internet e tente novamente.',
         RateLimitedError() =>
           'Limite de requisições atingido no servidor (HTTP 429). Aguarde alguns instantes e tente novamente.',
         ServerError(:final statusCode) =>
@@ -471,45 +612,86 @@ class ChatController {
         UnknownError(:final message) => 'Falha no download do modelo: $message',
       };
     } on ModelValidationException catch (e) {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
       errorMessage.value =
-          'O arquivo baixado falhou na verificação de integridade (${e.message}). Tente baixar novamente.';
+          'O arquivo baixado falhou na verificação de integridade (${e.message}). Tente excluir e baixar novamente.';
     } on LiteRtLmBundleException catch (e) {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
       errorMessage.value = switch (e.problem) {
         LiteRtLmBundleProblem.incomplete =>
-          'O arquivo do modelo está incompleto ou corrompido. Tente baixar novamente.',
+          'O arquivo do modelo está incompleto ou corrompido. Exclua e baixe novamente.',
         LiteRtLmBundleProblem.wrongBackend ||
         LiteRtLmBundleProblem.unsupportedNpu =>
           'O modelo selecionado não é compatível com o backend escolhido: ${e.message}',
         _ => 'Arquivo de modelo inválido ou incompatível: ${e.message}',
       };
+    } on ModelStorageException catch (e) {
+      _syncLoadedStateAfterFailure();
+      loadingStatus.value = '';
+      errorMessage.value =
+          'Erro no armazenamento local (${e.message}). Verifique o espaço livre do dispositivo.';
+    } on TimeoutException {
+      _syncLoadedStateAfterFailure();
+      loadingStatus.value = '';
+      errorMessage.value =
+          'Tempo esgotado ao carregar o modelo na memória. Feche outros apps, reduza a janela de contexto ou desative o suporte a imagens.';
     } on NoActiveModelError {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
       errorMessage.value =
           'Nenhum modelo ativo foi encontrado. Inicie o download novamente.';
     } on BackendInitException catch (e) {
-      isLoading.value = false;
+      _syncLoadedStateAfterFailure();
       loadingStatus.value = '';
-      final backendName = AppConstants.backendLabel(e.lastAttempt.backend);
+      final attemptsSummary = e.attempts
+          .map(
+            (attempt) =>
+                '${AppConstants.backendLabel(attempt.backend)}: ${attempt.error}',
+          )
+          .join(' | ');
       errorMessage.value =
-          'Falha ao inicializar o modelo em $backendName: ${e.lastAttempt.error}';
+          'Falha ao inicializar ${spec.displayName} ($attemptsSummary). Dica: reduza os tokens de contexto, desative o suporte a imagens ou tente um modelo menor.';
+    } on StateError catch (e) {
+      _syncLoadedStateAfterFailure();
+      loadingStatus.value = '';
+      errorMessage.value = 'Não foi possível preparar o modelo: ${e.message}';
     } catch (e) {
+      _syncLoadedStateAfterFailure();
+      loadingStatus.value = '';
+      final details = e.toString();
+      if (details.contains('LiteRtLmLibraryException')) {
+        errorMessage.value =
+            'Biblioteca nativa LiteRT-LM indisponível neste dispositivo: $details';
+      } else {
+        errorMessage.value = 'Falha ao carregar o modelo: $e';
+      }
+    } finally {
       isLoading.value = false;
-      errorMessage.value = 'Falha ao carregar o modelo: $e';
+      if (startedLoadNotification) {
+        await _inferenceNotificationService.stop();
+      }
+      unawaited(refreshInstalledModels());
     }
   }
 
-  /// Altera as configurações da conversa (modelo, backend, maxTokens, thinking e estilo)
+  void _syncLoadedStateAfterFailure() {
+    if (_repository.activeBackend == null) {
+      isModelLoaded.value = false;
+      loadedModelId.value = null;
+      activeBackend.value = null;
+    }
+  }
+
+  /// Altera as configurações da conversa (modelo, backend, maxTokens, visão, thinking e estilo)
   Future<void> updateConversationSettings({
     String? modelId,
     bool? is2B,
     required PreferredBackend preferredBackend,
     required int maxTokens,
     required bool enableThinking,
+    bool? enableVision,
     required ResponseStyle newResponseStyle,
   }) async {
     if (isLoading.value || isGenerating.value) return;
@@ -519,41 +701,29 @@ class ChatController {
             ? AppConstants.modelSpec(is2B: is2B).id
             : selectedModelId.value);
     final spec = AppConstants.modelSpecById(resolvedModelId);
-    final normalizedBackend = _normalizeBackendForPlatform(preferredBackend);
+    final normalizedBackend = _normalizeBackendForModel(preferredBackend, spec);
     final clampedTokens = AppConstants.clampMaxTokens(
       maxTokens,
       modelId: spec.id,
     );
     final effectiveThinking = enableThinking && spec.supportsThinking;
+    final requestedVision = enableVision ?? this.enableVision.value;
+    final effectiveVision = requestedVision && spec.supportsImage;
 
     final currentLoaded = loadedModelId.value ?? selectedModelId.value;
+    final currentLoadedSpec = AppConstants.modelSpecById(currentLoaded);
+    final currentLoadedVision =
+        currentLoadedSpec.supportsImage && this.enableVision.value;
+
     final requiresModelReload = !isModelLoaded.value ||
         (spec.id != currentLoaded) ||
         (normalizedBackend != selectedBackend.value) ||
-        (clampedTokens != this.maxTokens.value);
+        (clampedTokens != this.maxTokens.value) ||
+        (effectiveVision != currentLoadedVision);
     final requiresSessionRestart = (newResponseStyle != responseStyle.value) ||
         (effectiveThinking != this.enableThinking.value);
 
     if (!requiresModelReload && !requiresSessionRestart) return;
-
-    responseStyle.value = newResponseStyle;
-    selectedModelId.value = spec.id;
-    selectedBackend.value = normalizedBackend;
-    this.maxTokens.value = clampedTokens;
-    this.enableThinking.value = effectiveThinking;
-    if (!spec.supportsImage) {
-      attachedImage.value = null;
-    }
-
-    final conv = currentConversation;
-    if (conv != null) {
-      conv.modelId = spec.id;
-      conv.preferredBackend = normalizedBackend;
-      conv.maxTokens = clampedTokens;
-      conv.enableThinking = effectiveThinking;
-      conv.responseStyle = newResponseStyle;
-      await _saveCurrentState();
-    }
 
     if (requiresModelReload) {
       await downloadAndLoadModel(
@@ -561,29 +731,53 @@ class ChatController {
         preferredBackend: normalizedBackend,
         maxTokens: clampedTokens,
         enableThinking: effectiveThinking,
+        enableVision: requestedVision,
         contextMessages: chatHistory.value,
         responseStyle: newResponseStyle,
       );
-    } else if (requiresSessionRestart && isModelLoaded.value) {
-      await _repository.startNewChatSession(
-        modelId: spec.id,
-        contextMessages: chatHistory.value,
-        responseStyle: newResponseStyle,
-        enableThinking: effectiveThinking,
-      );
-      final thinkingNote = spec.supportsThinking
-          ? ' • Thinking ${effectiveThinking ? 'ativado' : 'desativado'}'
-          : '';
-      chatHistory.value = [
-        ...chatHistory.value,
-        ChatMessage(
-          text:
-              'Sistema: Configurações atualizadas (Estilo: "${newResponseStyle.label}"$thinkingNote).',
-          isUser: false,
-        ),
-      ];
-      _syncMessagesToCurrentConversation();
-      await _saveCurrentState();
+      return;
+    }
+
+    if (requiresSessionRestart && isModelLoaded.value) {
+      try {
+        await _repository.startNewChatSession(
+          modelId: spec.id,
+          contextMessages: chatHistory.value,
+          responseStyle: newResponseStyle,
+          supportImage: effectiveVision,
+          enableThinking: effectiveThinking,
+        );
+
+        responseStyle.value = newResponseStyle;
+        this.enableThinking.value = effectiveThinking;
+
+        final conv = currentConversation;
+        if (conv != null) {
+          conv.modelId = spec.id;
+          conv.preferredBackend = normalizedBackend;
+          conv.maxTokens = clampedTokens;
+          conv.enableThinking = effectiveThinking;
+          conv.enableVision = requestedVision;
+          conv.responseStyle = newResponseStyle;
+        }
+
+        final thinkingNote = spec.supportsThinking
+            ? ' • Thinking ${effectiveThinking ? 'ativado' : 'desativado'}'
+            : '';
+        chatHistory.value = [
+          ...chatHistory.value,
+          ChatMessage(
+            text:
+                'Sistema: Configurações atualizadas (Estilo: "${newResponseStyle.label}"$thinkingNote).',
+            isUser: false,
+          ),
+        ];
+        _syncMessagesToCurrentConversation();
+        await _saveCurrentState();
+      } catch (e) {
+        errorMessage.value =
+            'Falha ao atualizar configurações da conversa: $e';
+      }
     }
   }
 
@@ -599,6 +793,7 @@ class ChatController {
       preferredBackend: preferredBackend,
       maxTokens: maxTokens.value,
       enableThinking: enableThinking.value,
+      enableVision: enableVision.value,
       newResponseStyle: responseStyle.value,
     );
   }
@@ -636,9 +831,8 @@ class ChatController {
 
   Future<void> sendMessage(String text, [Uint8List? imageBytes]) async {
     final activeSpec = activeLoadedModelSpec;
-    final image = activeSpec.supportsImage
-        ? (imageBytes ?? attachedImage.value)
-        : null;
+    final canUseImages = activeSpec.supportsImage && enableVision.value;
+    final image = canUseImages ? (imageBytes ?? attachedImage.value) : null;
     final trimmedText = text.trim();
     final effectiveText = trimmedText.isEmpty && image != null
         ? 'Analise esta imagem'

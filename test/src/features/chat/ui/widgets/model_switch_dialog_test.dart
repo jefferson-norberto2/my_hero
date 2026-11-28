@@ -34,7 +34,7 @@ void main() {
   });
 
   group('ModelSwitchDialog Widget Tests', () {
-    testWidgets('hides NPU on Linux and applies thinking toggle without model reload', (tester) async {
+    testWidgets('hides NPU on generic models and applies thinking toggle without model reload', (tester) async {
       final controller = ChatController(
         repository: mockRepository,
         mediaPickerService: mockMediaPicker,
@@ -48,6 +48,7 @@ void main() {
           modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: true,
           enableThinking: true,
         ),
       ).thenAnswer((_) async {});
@@ -72,6 +73,7 @@ void main() {
       expect(find.text('GPU'), findsOneWidget);
       expect(find.text('NPU'), findsNothing);
       expect(find.text('32K'), findsOneWidget);
+      expect(find.text('Suporte a imagens (Visão)'), findsOneWidget);
 
       await tester.ensureVisible(find.text('Modo Pensamento (Thinking)'));
       await tester.pumpAndSettle();
@@ -87,16 +89,17 @@ void main() {
           modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
+          supportImage: true,
           enableThinking: true,
         ),
       ).called(1);
     });
 
-    testWidgets('shows NPU on Windows and reloads model when maxTokens or backend changes', (tester) async {
+    testWidgets('reloads model with supportImage=false and new backend/tokens when vision, GPU or maxTokens changes', (tester) async {
       final controller = ChatController(
         repository: mockRepository,
         mediaPickerService: mockMediaPicker,
-        platform: TargetPlatform.windows,
+        platform: TargetPlatform.android,
       );
       controller.isModelLoaded.value = true;
       controller.loadedModelId.value = AppConstants.model2b.id;
@@ -105,11 +108,12 @@ void main() {
         () => mockRepository.loadModel(
           modelId: AppConstants.model2b.id,
           is2B: true,
-          preferredBackend: PreferredBackend.npu,
+          preferredBackend: PreferredBackend.gpu,
           maxTokens: 16384,
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
+          supportImage: false,
           enableThinking: false,
         ),
       ).thenAnswer((_) async {});
@@ -130,11 +134,9 @@ void main() {
       await tester.tap(find.text('Abrir'));
       await tester.pumpAndSettle();
 
-      expect(find.text('NPU'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('NPU'));
+      await tester.ensureVisible(find.text('GPU'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('NPU'));
+      await tester.tap(find.text('GPU'));
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(find.text('16K'));
@@ -142,20 +144,27 @@ void main() {
       await tester.tap(find.text('16K'));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Suporte a imagens (Visão)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Suporte a imagens (Visão)'));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.text('Salvar'));
       await tester.pumpAndSettle();
 
-      expect(controller.selectedBackend.value, PreferredBackend.npu);
+      expect(controller.selectedBackend.value, PreferredBackend.gpu);
       expect(controller.maxTokens.value, 16384);
+      expect(controller.enableVision.value, isFalse);
       verify(
         () => mockRepository.loadModel(
           modelId: AppConstants.model2b.id,
           is2B: true,
-          preferredBackend: PreferredBackend.npu,
+          preferredBackend: PreferredBackend.gpu,
           maxTokens: 16384,
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
+          supportImage: false,
           enableThinking: false,
         ),
       ).called(1);

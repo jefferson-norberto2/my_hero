@@ -8,8 +8,10 @@ import 'package:mocktail/mocktail.dart';
 import 'package:my_hero/src/core/constants/app_constants.dart';
 import 'package:my_hero/src/features/chat/controller/chat_controller.dart';
 import 'package:my_hero/src/features/chat/data/adapter/chat_message_adapter.dart';
+import 'package:my_hero/src/features/chat/data/adapter/conversation_model.dart';
 import 'package:my_hero/src/features/chat/data/adapter/response_style.dart';
 import 'package:my_hero/src/features/chat/data/repository/chat_repository.dart';
+import 'package:my_hero/src/shared/services/device_resources_service.dart';
 import 'package:my_hero/src/shared/services/inference_notification_service.dart';
 import 'package:my_hero/src/shared/services/media_picker_service.dart';
 
@@ -17,6 +19,8 @@ class MockChatRepository extends Mock implements ChatRepository {}
 class MockMediaPickerService extends Mock implements MediaPickerService {}
 class MockInferenceNotificationService extends Mock
     implements InferenceNotificationService {}
+class MockDeviceResourcesService extends Mock
+    implements DeviceResourcesService {}
 
 void main() {
   late MockChatRepository mockRepository;
@@ -36,6 +40,7 @@ void main() {
     when(() => mockRepository.getInstalledModelFileNames())
         .thenAnswer((_) async => <String>{});
     when(() => mockRepository.uninstallModel(any())).thenAnswer((_) async {});
+    when(() => mockRepository.cleanupStorage()).thenAnswer((_) async {});
     when(() => mockRepository.saveConversations(any())).thenAnswer((_) async {});
     when(() => mockRepository.reset()).thenAnswer((_) async {});
     when(() => mockRepository.stopGeneration()).thenAnswer((_) async {});
@@ -49,7 +54,7 @@ void main() {
   });
 
   group('ChatController - Platform Capabilities & Configuration', () {
-    test('Android and Windows should expose NPU; Linux should expose CPU and GPU only', () {
+    test('platform capability helpers and model-filtered backends behave correctly', () {
       final androidCtrl = ChatController(
         repository: mockRepository,
         mediaPickerService: mockMediaPicker,
@@ -67,18 +72,40 @@ void main() {
       );
 
       expect(
-        androidCtrl.availableBackends,
+        AppConstants.availableBackendsForPlatform(TargetPlatform.android),
         [PreferredBackend.cpu, PreferredBackend.gpu, PreferredBackend.npu],
       );
       expect(
-        windowsCtrl.availableBackends,
+        AppConstants.availableBackendsForPlatform(TargetPlatform.windows),
         [PreferredBackend.cpu, PreferredBackend.gpu, PreferredBackend.npu],
+      );
+      expect(
+        AppConstants.availableBackendsForPlatform(TargetPlatform.linux),
+        [PreferredBackend.cpu, PreferredBackend.gpu],
+      );
+
+      // Bundles genéricos abertos do catálogo não suportam NPU
+      expect(
+        androidCtrl.availableBackends,
+        [PreferredBackend.cpu, PreferredBackend.gpu],
+      );
+      expect(
+        windowsCtrl.availableBackends,
+        [PreferredBackend.cpu, PreferredBackend.gpu],
       );
       expect(
         linuxCtrl.availableBackends,
         [PreferredBackend.cpu, PreferredBackend.gpu],
       );
-      expect(androidCtrl.maxTokens.value, 4096);
+
+      // TranslateGemma 4B restringe GPU e roda apenas em CPU
+      final translateSpec = AppConstants.modelSpecById('translategemma-4b-it');
+      expect(
+        androidCtrl.availableBackendsForModel(translateSpec),
+        [PreferredBackend.cpu],
+      );
+
+      expect(androidCtrl.maxTokens.value, 2048);
       expect(linuxCtrl.maxTokens.value, 8192);
       expect(windowsCtrl.maxTokens.value, 8192);
       expect(androidCtrl.supportsCamera, isTrue);
@@ -102,25 +129,26 @@ void main() {
         () => mockRepository.loadModel(
           modelId: AppConstants.model2b.id,
           is2B: true,
-          preferredBackend: PreferredBackend.npu,
-          maxTokens: 4096,
+          preferredBackend: PreferredBackend.gpu,
+          maxTokens: 2048,
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: true,
           enableThinking: true,
         ),
       ).thenAnswer((_) async {});
-      when(() => mockRepository.activeBackend).thenReturn(PreferredBackend.gpu);
+      when(() => mockRepository.activeBackend).thenReturn(PreferredBackend.cpu);
 
-      controller.selectBackend(PreferredBackend.npu);
+      controller.selectBackend(PreferredBackend.gpu);
       controller.setEnableThinking(true);
 
       await controller.downloadAndLoadModel(modelId: AppConstants.model2b.id);
 
       expect(controller.isModelLoaded.value, isTrue);
-      expect(controller.selectedBackend.value, PreferredBackend.npu);
-      expect(controller.activeBackend.value, PreferredBackend.gpu);
-      expect(controller.backendDisplaySummary, 'NPU → GPU');
+      expect(controller.selectedBackend.value, PreferredBackend.gpu);
+      expect(controller.activeBackend.value, PreferredBackend.cpu);
+      expect(controller.backendDisplaySummary, 'GPU → CPU');
     });
 
     test('updateConversationSettings changing only enableThinking should restart session without reloading model', () async {
@@ -130,6 +158,7 @@ void main() {
           modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: true,
           enableThinking: true,
         ),
       ).thenAnswer((_) async {});
@@ -139,6 +168,7 @@ void main() {
         preferredBackend: controller.selectedBackend.value,
         maxTokens: controller.maxTokens.value,
         enableThinking: true,
+        enableVision: controller.enableVision.value,
         newResponseStyle: controller.responseStyle.value,
       );
 
@@ -148,6 +178,7 @@ void main() {
           modelId: AppConstants.model2b.id,
           contextMessages: any(named: 'contextMessages'),
           responseStyle: ResponseStyle.simple,
+          supportImage: true,
           enableThinking: true,
         ),
       ).called(1);
@@ -158,6 +189,7 @@ void main() {
           preferredBackend: any(named: 'preferredBackend'),
           maxTokens: any(named: 'maxTokens'),
           onProgress: any(named: 'onProgress'),
+          supportImage: any(named: 'supportImage'),
         ),
       );
     });
@@ -324,7 +356,7 @@ void main() {
         controller.chatHistory.value.last.text,
         contains('janela de contexto'),
       );
-      expect(controller.chatHistory.value.last.text, contains('4K'));
+      expect(controller.chatHistory.value.last.text, contains('2K'));
     });
 
     test('downloadAndLoadModel should report incomplete bundle on LiteRtLmBundleException', () async {
@@ -337,6 +369,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(
@@ -365,6 +398,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(const ModelValidationException('size mismatch'));
@@ -388,6 +422,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(NoActiveModelError('No active inference model'));
@@ -401,7 +436,14 @@ void main() {
       );
     });
 
-    test('downloadAndLoadModel should report failing backend on BackendInitException', () async {
+    test('downloadAndLoadModel should report ALL backend attempts, keep installed files and clear stale loaded state on BackendInitException', () async {
+      final gemma2b = AppConstants.model2b;
+      controller.isModelLoaded.value = true;
+      controller.loadedModelId.value = gemma2b.id;
+      controller.activeBackend.value = PreferredBackend.cpu;
+
+      when(() => mockRepository.getInstalledModelFileNames())
+          .thenAnswer((_) async => {gemma2b.fileName});
       when(
         () => mockRepository.loadModel(
           modelId: any(named: 'modelId'),
@@ -411,6 +453,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(
@@ -421,15 +464,87 @@ void main() {
               error: 'Vulkan device unavailable',
               stackTrace: StackTrace.empty,
             ),
+            BackendInitAttemptFailure(
+              backend: PreferredBackend.cpu,
+              error: 'Cannot allocate memory',
+              stackTrace: StackTrace.empty,
+            ),
           ],
         ),
       );
 
       await controller.downloadAndLoadModel(is2B: true);
+      await Future<void>.delayed(Duration.zero);
 
       expect(controller.isLoading.value, isFalse);
+      expect(controller.isModelLoaded.value, isFalse);
+      expect(controller.loadedModelId.value, isNull);
+      expect(controller.activeBackend.value, isNull);
+      expect(controller.isModelInstalled(gemma2b), isTrue);
       expect(controller.errorMessage.value, contains('GPU'));
       expect(controller.errorMessage.value, contains('Vulkan device unavailable'));
+      expect(controller.errorMessage.value, contains('CPU'));
+      expect(controller.errorMessage.value, contains('Cannot allocate memory'));
+    });
+
+    test('updateConversationSettings should NOT overwrite saved Conversation when loadModel fails', () async {
+      final now = DateTime.now();
+      final originalConv = Conversation(
+        id: 'conv-1',
+        title: 'Conversa Estável',
+        messages: [],
+        modelId: AppConstants.model2b.id,
+        preferredBackend: PreferredBackend.cpu,
+        maxTokens: 2048,
+        enableThinking: false,
+        enableVision: true,
+        responseStyle: ResponseStyle.simple,
+        createdAt: now,
+        updatedAt: now,
+      );
+      controller.conversations.value = [originalConv];
+      controller.currentConversationId.value = originalConv.id;
+      controller.isModelLoaded.value = true;
+      controller.loadedModelId.value = AppConstants.model2b.id;
+
+      when(
+        () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenThrow(
+        BackendInitException(
+          attempts: [
+            BackendInitAttemptFailure(
+              backend: PreferredBackend.gpu,
+              error: 'Out of memory',
+              stackTrace: StackTrace.empty,
+            ),
+          ],
+        ),
+      );
+
+      await controller.updateConversationSettings(
+        modelId: AppConstants.model4b.id,
+        preferredBackend: PreferredBackend.gpu,
+        maxTokens: 16384,
+        enableThinking: true,
+        enableVision: false,
+        newResponseStyle: ResponseStyle.detailed,
+      );
+
+      expect(originalConv.modelId, AppConstants.model2b.id);
+      expect(originalConv.maxTokens, 2048);
+      expect(originalConv.preferredBackend, PreferredBackend.cpu);
+      expect(originalConv.enableVision, isTrue);
+      verifyNever(() => mockRepository.saveConversations(any()));
     });
 
     test('downloadAndLoadModel should treat DownloadException(CanceledError) from Android notification cancel as user cancel', () async {
@@ -442,6 +557,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(const DownloadException(DownloadError.canceled()));
@@ -462,6 +578,7 @@ void main() {
           onProgress: any(named: 'onProgress'),
           contextMessages: any(named: 'contextMessages'),
           responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
           enableThinking: any(named: 'enableThinking'),
         ),
       ).thenThrow(const DownloadException(DownloadError.network('timeout')));
@@ -474,7 +591,81 @@ void main() {
     });
   });
 
-  group('ChatController - Background Inference Notification', () {
+  group('ChatController - Device RAM & Storage Guardrails', () {
+    late MockDeviceResourcesService mockDeviceResources;
+
+    setUp(() {
+      mockDeviceResources = MockDeviceResourcesService();
+    });
+
+    test('preflight blocks download when free storage is insufficient', () async {
+      when(() => mockDeviceResources.getDeviceResources()).thenAnswer(
+        (_) async => const DeviceResourcesInfo(
+          totalRamBytes: 8 * 1024 * 1024 * 1024,
+          availableRamBytes: 4 * 1024 * 1024 * 1024,
+          lowMemory: false,
+          memoryThresholdBytes: 256 * 1024 * 1024,
+          freeStorageBytes: 500 * 1024 * 1024,
+        ),
+      );
+
+      final ctrl = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        deviceResourcesService: mockDeviceResources,
+        platform: TargetPlatform.android,
+      );
+
+      await ctrl.downloadAndLoadModel(modelId: AppConstants.model2b.id);
+
+      expect(ctrl.isLoading.value, isFalse);
+      expect(ctrl.errorMessage.value, contains('Espaço insuficiente'));
+      verifyNever(
+        () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          supportImage: any(named: 'supportImage'),
+        ),
+      );
+    });
+
+    test('low-RAM Android device applies safe initial defaults (1024 tokens, vision off) and assesses high risk for 4B model', () async {
+      when(() => mockDeviceResources.getDeviceResources()).thenAnswer(
+        (_) async => const DeviceResourcesInfo(
+          totalRamBytes: 4 * 1024 * 1024 * 1024,
+          availableRamBytes: 1500 * 1024 * 1024,
+          lowMemory: false,
+          memoryThresholdBytes: 256 * 1024 * 1024,
+          freeStorageBytes: 20 * 1024 * 1024 * 1024,
+        ),
+      );
+
+      final ctrl = ChatController(
+        repository: mockRepository,
+        mediaPickerService: mockMediaPicker,
+        deviceResourcesService: mockDeviceResources,
+        platform: TargetPlatform.android,
+      );
+
+      await ctrl.init();
+
+      expect(ctrl.maxTokens.value, 1024);
+      expect(ctrl.enableVision.value, isFalse);
+      expect(
+        ctrl.memoryAssessmentFor(
+          spec: AppConstants.model4b,
+          maxTokens: 4096,
+          enableVision: true,
+        ).risk,
+        ModelMemoryRisk.high,
+      );
+    });
+  });
+
+  group('ChatController - Background Inference & Loading Notification', () {
     late MockInferenceNotificationService mockNotificationService;
     late ChatController notifiedController;
     Future<void> Function()? capturedStopCallback;
@@ -514,10 +705,55 @@ void main() {
         inferenceNotificationService: mockNotificationService,
         platform: TargetPlatform.android,
       );
-      notifiedController.isModelLoaded.value = true;
+    });
+
+    test('starts foreground service during native model load and always stops it in finally even on error', () async {
+      when(
+        () => mockRepository.loadModel(
+          modelId: any(named: 'modelId'),
+          is2B: any(named: 'is2B'),
+          preferredBackend: any(named: 'preferredBackend'),
+          maxTokens: any(named: 'maxTokens'),
+          onProgress: any(named: 'onProgress'),
+          contextMessages: any(named: 'contextMessages'),
+          responseStyle: any(named: 'responseStyle'),
+          supportImage: any(named: 'supportImage'),
+          enableThinking: any(named: 'enableThinking'),
+        ),
+      ).thenAnswer((invocation) async {
+        final onProgress = invocation.namedArguments[#onProgress]
+            as void Function(double, String);
+        onProgress(1.0, 'Carregando Gemma 4 E2B (CPU, 2K tokens)...');
+        throw BackendInitException(
+          attempts: [
+            BackendInitAttemptFailure(
+              backend: PreferredBackend.cpu,
+              error: 'OOM',
+              stackTrace: StackTrace.empty,
+            ),
+          ],
+        );
+      });
+
+      await notifiedController.downloadAndLoadModel(modelId: AppConstants.model2b.id);
+
+      verify(
+        () => mockNotificationService.start(
+          title: 'My Hero • Gemma 4 E2B',
+          body: 'Carregando modelo na memória...',
+        ),
+      ).called(1);
+      verify(
+        () => mockNotificationService.stop(
+          notifyIfBackgrounded: false,
+          completedTitle: null,
+          completedBody: null,
+        ),
+      ).called(1);
     });
 
     test('should start thinking notification, transition to answering once, and notify completion', () async {
+      notifiedController.isModelLoaded.value = true;
       notifiedController.setEnableThinking(true);
 
       when(
@@ -558,6 +794,7 @@ void main() {
     });
 
     test('should stop generation without completion notification when stopped from notification action', () async {
+      notifiedController.isModelLoaded.value = true;
       final streamController = StreamController<ChatStreamChunk>();
 
       when(
@@ -589,6 +826,7 @@ void main() {
     });
 
     test('should stop notification without completion alert on inference error', () async {
+      notifiedController.isModelLoaded.value = true;
       when(
         () => mockRepository.sendMessage(
           text: any(named: 'text'),
@@ -625,7 +863,8 @@ void main() {
       }
     });
 
-    test('selectModel should clamp maxTokens, disable thinking and clear image when unsupported', () {
+    test('selectModel should clamp maxTokens, disable thinking, normalize backend and clear image when unsupported', () {
+      controller.selectBackend(PreferredBackend.gpu);
       controller.setMaxTokens(32768);
       controller.setEnableThinking(true);
       controller.setAttachedImage(Uint8List.fromList([1, 2, 3]));
@@ -639,6 +878,11 @@ void main() {
       expect(controller.attachedImage.value, isNull);
       expect(controller.supportsImage, isFalse);
       expect(controller.supportsThinking, isFalse);
+
+      // TranslateGemma não suporta GPU: backend cai para CPU
+      final translateSpec = AppConstants.modelSpecById('translategemma-4b-it');
+      controller.selectModel(translateSpec.id);
+      expect(controller.selectedBackend.value, PreferredBackend.cpu);
     });
 
     test('refreshInstalledModels and uninstallModel should track downloaded models and unload active one', () async {

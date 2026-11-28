@@ -1,14 +1,18 @@
 package com.example.my_hero
 
 import android.Manifest
+import android.app.ActivityManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.StatFs
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var inferenceChannel: MethodChannel? = null
+    private var resourcesChannel: MethodChannel? = null
     private var hasRequestedNotificationPermission: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -19,6 +23,41 @@ class MainActivity : FlutterActivity() {
             INFERENCE_CHANNEL_NAME,
         )
         inferenceChannel = channel
+
+        val devResourcesChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_RESOURCES_CHANNEL_NAME,
+        )
+        resourcesChannel = devResourcesChannel
+
+        devResourcesChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getDeviceResources" -> {
+                    val activityManager =
+                        getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                    val memInfo = ActivityManager.MemoryInfo()
+                    activityManager?.getMemoryInfo(memInfo)
+
+                    val freeStorageBytes = try {
+                        StatFs(applicationContext.filesDir.path).availableBytes
+                    } catch (_: Exception) {
+                        0L
+                    }
+
+                    result.success(
+                        hashMapOf<String, Any>(
+                            "totalRamBytes" to memInfo.totalMem,
+                            "availableRamBytes" to memInfo.availMem,
+                            "lowMemory" to memInfo.lowMemory,
+                            "memoryThresholdBytes" to memInfo.threshold,
+                            "freeStorageBytes" to freeStorageBytes,
+                        ),
+                    )
+                }
+
+                else -> result.notImplemented()
+            }
+        }
 
         InferenceForegroundService.onStopRequestedListener = {
             runOnUiThread {
@@ -76,6 +115,8 @@ class MainActivity : FlutterActivity() {
         InferenceForegroundService.onStopRequestedListener = null
         inferenceChannel?.setMethodCallHandler(null)
         inferenceChannel = null
+        resourcesChannel?.setMethodCallHandler(null)
+        resourcesChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -97,6 +138,8 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val INFERENCE_CHANNEL_NAME =
             "com.example.my_hero/inference_notification"
+        private const val DEVICE_RESOURCES_CHANNEL_NAME =
+            "com.example.my_hero/device_resources"
         private const val REQUEST_CODE_POST_NOTIFICATIONS = 4201
     }
 }

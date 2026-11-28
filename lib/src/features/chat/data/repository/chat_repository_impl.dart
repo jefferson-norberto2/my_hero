@@ -44,6 +44,11 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<void> cleanupStorage() {
+    return _gemmaDatasource.cleanupStorage();
+  }
+
+  @override
   Future<void> loadModel({
     String? modelId,
     bool is2B = true,
@@ -63,29 +68,39 @@ class ChatRepositoryImpl implements ChatRepository {
     final effectiveSupportImage = (supportImage ?? true) && spec.supportsImage;
     final effectiveThinking = enableThinking && spec.supportsThinking;
 
+    // Libera imediatamente memória nativa do modelo anterior antes de verificar/baixar/carregar
+    await _gemmaDatasource.close();
+
     onProgress(0.0, 'Verificando armazenamento local...');
     final alreadyInstalled =
         await _gemmaDatasource.isModelInstalled(spec.fileName);
 
     if (alreadyInstalled) {
-      onProgress(1.0, 'Modelo ${spec.displayName} encontrado localmente.');
+      onProgress(
+        1.0,
+        'Modelo ${spec.displayName} encontrado localmente. Ativando...',
+      );
+      await _gemmaDatasource.activateInstalledModel(
+        fileName: spec.fileName,
+        modelType: spec.modelType,
+        fileType: spec.fileType,
+      );
     } else {
       onProgress(
         0.0,
         'Iniciando download de ${spec.displayName} (${spec.formattedSize})...',
       );
+      await _gemmaDatasource.installModelFromCatalog(
+        variant: spec.catalogVariant,
+        onProgress: (percent) {
+          final normalized = (percent / 100.0).clamp(0.0, 1.0);
+          onProgress(
+            normalized,
+            'Baixando ${spec.displayName}: $percent%',
+          );
+        },
+      );
     }
-
-    await _gemmaDatasource.installModelFromCatalog(
-      variant: spec.catalogVariant,
-      onProgress: (percent) {
-        final normalized = (percent / 100.0).clamp(0.0, 1.0);
-        onProgress(
-          normalized,
-          'Baixando ${spec.displayName}: $percent%',
-        );
-      },
-    );
 
     onProgress(
       1.0,

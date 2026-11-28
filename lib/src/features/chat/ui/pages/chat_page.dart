@@ -30,9 +30,15 @@ class _ChatPageState extends State<ChatPage> {
       final error = _controller.errorMessage.value;
       if (error != null && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error)),
-          );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(error),
+                duration: const Duration(seconds: 6),
+              ),
+            );
         });
       }
     });
